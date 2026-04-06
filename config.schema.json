@@ -1,0 +1,28 @@
+{
+  "pluginAlias": "HiloChallenge",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "refreshToken": {
+        "title": "Hilo Refresh Token",
+        "type": "string",
+        "required": true,
+        "description": "Your Hilo refresh token — copy this from your homebridge-hilo plugin config."
+      },
+      "locationId": {
+        "title": "Location ID (optional)",
+        "type": "string",
+        "description": "Your Hilo location URN. Found in homebridge-hilo logs: 'Subscribed to updates for location urn:hilo:crm:...'  Leave blank to auto-discover."
+      },
+      "pollInterval": {
+        "title": "Poll Interval (seconds)",
+        "type": "integer",
+        "default": 60,
+        "minimum": 30,
+        "maximum": 300
+      }
+    }
+  }
+}

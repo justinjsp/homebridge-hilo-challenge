@@ -1,0 +1,51 @@
+{
+  "name": "homebridge-hilo-challenge",
+  "version": "0.1.2",
+  "description": "Homebridge plugin for Hilo (Hydro-Québec) demand response challenges — exposes challenge phases as HomeKit contact sensors",
+  "license": "MIT",
+  "author": "Justin Prest",
+  "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justinjsp/homebridge-hilo-challenge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/justinjsp/homebridge-hilo-challenge/issues"
+  },
+  "homepage": "https://github.com/justinjsp/homebridge-hilo-challenge#readme",
+  "files": [
+    "dist",
+    "config.schema.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prepublishOnly": "npm run build"
+  },
+  "homebridge": {
+    "displayName": "Hilo Challenge",
+    "pluginType": "platform",
+    "singular": true
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "hilo",
+    "hilo-challenge",
+    "hydro-quebec",
+    "homekit",
+    "energy",
+    "demand-response"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "homebridge": ">=1.6.0"
+  },
+  "peerDependencies": {
+    "homebridge": ">=1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "homebridge": "^1.8.0",
+    "typescript": "^5.0.0"
+  }
+}
