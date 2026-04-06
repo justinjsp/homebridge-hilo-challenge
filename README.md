@@ -87,3 +87,9 @@ Pairs well with **[homebridge-grizzl-e](https://github.com/justinjsp/homebridge-
 ## Issues & Support
 
 Please open an issue on [GitHub](https://github.com/justinjsp/homebridge-hilo-challenge/issues).
+
+## Disclaimer
+
+This plugin is an independent, community-developed project and is **not affiliated with, endorsed by, or supported by Hilo or Hydro-Québec** in any way. Hilo™ is a trademark of Hilo Énergie, a subsidiary of Hydro-Québec. All product names and trademarks are the property of their respective owners.
+
+This plugin is provided **as-is, without any warranty of any kind**, express or implied. Use it at your own risk. The authors accept no responsibility for any damage, data loss, or other issues arising from its use.
