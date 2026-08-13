@@ -1,5 +1,4 @@
 import * as https from 'https';
-import * as querystring from 'querystring';
 
 // Azure B2C auth config — same values as homebridge-hilo
 const B2C_HOST = 'connexion.hiloenergie.com';
@@ -97,12 +96,12 @@ export class HiloApi {
 
   private async refreshAccessToken(): Promise<void> {
     this.log.debug('Refreshing Hilo access token');
-    const body = querystring.stringify({
+    const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: this.currentRefreshToken,
       client_id: CLIENT_ID,
       scope: SCOPE,
-    });
+    }).toString();
     const path = `/${B2C_TENANT}/oauth2/v2.0/token?p=${B2C_POLICY}`;
     const res = await httpsRequest('POST', B2C_HOST, path, {
       'Content-Type': 'application/x-www-form-urlencoded',

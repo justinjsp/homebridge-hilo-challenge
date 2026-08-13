@@ -13,6 +13,10 @@ export declare class HiloChallengePlatform implements DynamicPlatformPlugin {
     constructor(log: Logger, config: PlatformConfig, homebridgeApi: API);
     configureAccessory(accessory: PlatformAccessory): void;
     private init;
+    /**
+     * Returns true during Hilo challenge season: December 1 – March 31.
+     */
+    private isChallengeSeason;
     private poll;
 }
 //# sourceMappingURL=platform.d.ts.map

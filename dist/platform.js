@@ -58,12 +58,26 @@ class HiloChallengePlatform {
         await this.poll();
         setInterval(() => this.poll(), this.pollInterval * 1000);
     }
+    /**
+     * Returns true during Hilo challenge season: December 1 – March 31.
+     */
+    isChallengeSeason() {
+        const month = new Date().getMonth() + 1; // 1 = Jan … 12 = Dec
+        return month === 12 || month <= 3;
+    }
     async poll() {
         if (!this.locationId)
             return;
+        if (!this.isChallengeSeason()) {
+            // Off-season (April–November): no challenges possible, skip API call.
+            for (const sensor of this.sensorAccessories.values()) {
+                sensor.updatePhase('none');
+            }
+            return;
+        }
         try {
             const phase = await this.hiloApi.getChallengePhase(this.locationId);
-            this.log.debug(`Current Hilo challenge phase: ${phase}`);
+            this.log.info(`Current Hilo challenge phase: ${phase}`);
             for (const sensor of this.sensorAccessories.values()) {
                 sensor.updatePhase(phase);
             }
