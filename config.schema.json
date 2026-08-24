@@ -2,6 +2,7 @@
   "pluginAlias": "HiloChallenge",
   "pluginType": "platform",
   "singular": true,
+  "headerDisplay": "⚠️ **Requires the [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) plugin.** This plugin reuses the refresh token from homebridge-hilo — install and configure that plugin first, then copy its `refreshToken` value into the field below.",
   "schema": {
     "type": "object",
     "properties": {

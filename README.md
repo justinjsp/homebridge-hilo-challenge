@@ -13,6 +13,18 @@ When a sensor opens, it can trigger HomeKit automations — for example, automat
 
 > **Seasonal operation:** The plugin only polls the Hilo API during challenge season (December 1 – March 31). Outside of that window it makes no API calls and the sensors remain inactive.
 
+## ⚠️ Prerequisite: install `homebridge-hilo` first
+
+This plugin **does not authenticate with Hilo on its own.** It reuses the refresh token obtained by the [**homebridge-hilo**](https://github.com/johannrichard/homebridge-hilo) plugin.
+
+**You must install and configure [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) before this plugin.** If it isn't already set up:
+
+1. Install **homebridge-hilo** from the Homebridge UI and complete its login flow.
+2. Confirm it's working (your Hilo devices appear in HomeKit).
+3. Then install this plugin and copy the `refreshToken` from the homebridge-hilo config (see [Getting Your Refresh Token](#getting-your-refresh-token) below).
+
+Without a valid refresh token from homebridge-hilo, this plugin has nothing to authenticate with and will not register any sensors.
+
 ## Requirements
 
 - A [Hilo](https://www.hiloenergie.com) account with at least one enrolled device (thermostat or water heater)

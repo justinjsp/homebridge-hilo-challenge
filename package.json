@@ -29,6 +29,7 @@
   },
   "keywords": [
     "homebridge-plugin",
+    "supports-hap",
     "hilo",
     "hilo-challenge",
     "hydro-quebec",
