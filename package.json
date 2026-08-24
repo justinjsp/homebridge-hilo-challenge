@@ -13,6 +13,16 @@
     "url": "https://github.com/justinjsp/homebridge-hilo-challenge/issues"
   },
   "homepage": "https://github.com/justinjsp/homebridge-hilo-challenge#readme",
+  "funding": [
+    {
+      "type": "paypal",
+      "url": "https://paypal.me/justinjsp"
+    },
+    {
+      "type": "buymeacoffee",
+      "url": "https://www.buymeacoffee.com/justinjsp"
+    }
+  ],
   "files": [
     "dist",
     "config.schema.json"
