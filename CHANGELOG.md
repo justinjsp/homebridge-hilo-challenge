@@ -5,6 +5,17 @@ All notable changes to **homebridge-hilo-challenge** are documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-08-24
+
+### Fixed
+- `config.schema.json`: moved required-field validation to a schema-level
+  `required` array — individual `"required": true` flags are invalid JSON Schema.
+- `config.schema.json`: added the `name` property.
+
+### Removed
+- `homebridge` from `peerDependencies`; it belongs only in `devDependencies`
+  (Homebridge is provided by the host at runtime).
+
 ## [0.1.5] - 2026-08-24
 
 ### Added
@@ -44,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phase detection. Polls only during challenge season (December–March).
 - Plugin icon and disclaimer of no affiliation with Hilo or Hydro-Québec.
 
+[0.1.6]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.6
 [0.1.5]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.5
 [0.1.4]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.4
 [0.1.3]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.3

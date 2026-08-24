@@ -6,10 +6,15 @@
   "schema": {
     "type": "object",
     "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "Hilo Challenge",
+        "description": "Platform name shown in the Homebridge logs."
+      },
       "refreshToken": {
         "title": "Hilo Refresh Token",
         "type": "string",
-        "required": true,
         "description": "Your Hilo refresh token — copy this from your homebridge-hilo plugin config."
       },
       "locationId": {
@@ -24,6 +29,7 @@
         "minimum": 30,
         "maximum": 300
       }
-    }
+    },
+    "required": ["name", "refreshToken"]
   }
 }
