@@ -19,8 +19,13 @@ class HiloChallengePlatform {
         this.locationId = null;
         this.pollInterval = config['pollInterval'] ?? 60;
         this.hiloApi = new hiloApi_1.HiloApi(config['refreshToken'], log);
+        if (!config['refreshToken']) {
+            this.log.error('Missing required configuration: "refreshToken". The Hilo Challenge platform ' +
+                'will not start until it is set. Copy the refreshToken from your homebridge-hilo config.');
+            return;
+        }
         this.homebridgeApi.on('didFinishLaunching', () => {
-            this.init();
+            this.init().catch((err) => this.log.error(`Startup failed: ${err}`));
         });
     }
     configureAccessory(accessory) {

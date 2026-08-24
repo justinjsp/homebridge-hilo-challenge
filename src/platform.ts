@@ -25,8 +25,16 @@ export class HiloChallengePlatform implements DynamicPlatformPlugin {
     this.pollInterval = (config['pollInterval'] as number | undefined) ?? 60;
     this.hiloApi = new HiloApi(config['refreshToken'] as string, log);
 
+    if (!config['refreshToken']) {
+      this.log.error(
+        'Missing required configuration: "refreshToken". The Hilo Challenge platform ' +
+        'will not start until it is set. Copy the refreshToken from your homebridge-hilo config.',
+      );
+      return;
+    }
+
     this.homebridgeApi.on('didFinishLaunching', () => {
-      this.init();
+      this.init().catch((err) => this.log.error(`Startup failed: ${err}`));
     });
   }
 
