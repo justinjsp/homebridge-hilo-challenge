@@ -34,6 +34,9 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HiloApi = void 0;
+exports.readHomebridgeHiloToken = readHomebridgeHiloToken;
+exports.orderRefreshTokens = orderRefreshTokens;
+const fs = __importStar(require("fs"));
 const https = __importStar(require("https"));
 // Azure B2C auth config — same values as homebridge-hilo
 const B2C_HOST = 'connexion.hiloenergie.com';
@@ -48,6 +51,9 @@ const SCOPE = [
 const GRAPHQL_HOST = 'platform.hiloenergie.com';
 const GRAPHQL_PATH = '/api/digital-twin/v3/graphql';
 const APIM_KEY = '20eeaedcb86945afa3fe792cea89b8bf';
+// homebridge-hilo's platform identifier in config.json. Homebridge also accepts the
+// fully-qualified "<plugin>.<platform>" form.
+const HOMEBRIDGE_HILO_PLATFORMS = ['Hilo', 'homebridge-hilo.Hilo'];
 // GraphQL query — inline fragments for every device type that exposes gDState.
 // gDState values observed: 'ACTIVE' (reduction), 'PRE_HEAT' (preheat),
 // 'RECOVERY' (recovery), 'OFF' / absent (no challenge).
@@ -81,14 +87,81 @@ function httpsRequest(method, hostname, path, headers, body) {
         req.end();
     });
 }
+/**
+ * Reads the refresh token homebridge-hilo keeps in Homebridge's config.json. homebridge-hilo
+ * rotates that token and writes the new one back, so it stays fresher than a copy pasted
+ * into this plugin's config. Returns null when there is no usable token; never throws.
+ */
+function readHomebridgeHiloToken(configPath, log) {
+    if (!configPath)
+        return null;
+    let raw;
+    try {
+        raw = fs.readFileSync(configPath, 'utf8');
+    }
+    catch (err) {
+        log?.debug(`Could not read ${configPath} for the homebridge-hilo token: ${err instanceof Error ? err.message : err}`);
+        return null;
+    }
+    let config;
+    try {
+        config = JSON.parse(raw);
+    }
+    catch {
+        // Deliberately not logging the parse error — it quotes file content, which may include tokens.
+        log?.debug(`Could not parse ${configPath} for the homebridge-hilo token (not valid JSON)`);
+        return null;
+    }
+    const platforms = Array.isArray(config?.platforms) ? config.platforms : [];
+    for (const entry of platforms) {
+        if (!entry || typeof entry !== 'object')
+            continue;
+        const { platform, refreshToken } = entry;
+        if (typeof platform === 'string' && HOMEBRIDGE_HILO_PLATFORMS.includes(platform) &&
+            typeof refreshToken === 'string' && refreshToken.trim() !== '') {
+            return refreshToken.trim();
+        }
+    }
+    log?.debug(`No homebridge-hilo ("Hilo") platform with a refreshToken in ${configPath}`);
+    return null;
+}
+/**
+ * Orders the refresh tokens to try: homebridge-hilo's config token first (it is kept
+ * fresh), then the last rotated token Hilo returned to us, then this plugin's configured
+ * token (the oldest, as it never changes). Empty and duplicate tokens are dropped.
+ */
+function orderRefreshTokens(fromHomebridgeHilo, configured, rotated) {
+    const candidates = [];
+    const add = (token, source) => {
+        const trimmed = token?.trim();
+        if (trimmed && !candidates.some((c) => c.token === trimmed)) {
+            candidates.push({ token: trimmed, source });
+        }
+    };
+    add(fromHomebridgeHilo, 'homebridge-hilo config');
+    add(rotated, 'rotated token');
+    add(configured, 'plugin config');
+    return candidates;
+}
 class HiloApi {
-    constructor(refreshToken, log) {
-        this.refreshToken = refreshToken;
+    constructor(configuredRefreshToken, log, 
+    // Homebridge's config.json — re-read before every token refresh for homebridge-hilo's token
+    configPath, request = httpsRequest) {
+        this.configuredRefreshToken = configuredRefreshToken;
         this.log = log;
+        this.configPath = configPath;
+        this.request = request;
         this.accessToken = null;
         this.tokenExpiry = 0;
+        this.rotatedRefreshToken = null;
         this.loginInFlight = null;
-        this.currentRefreshToken = refreshToken;
+    }
+    /**
+     * The refresh tokens available right now, in the order they will be tried.
+     * Re-reads config.json each time, so homebridge-hilo's latest rotation is picked up.
+     */
+    refreshTokenCandidates() {
+        return orderRefreshTokens(readHomebridgeHiloToken(this.configPath, this.log), this.configuredRefreshToken, this.rotatedRefreshToken);
     }
     async ensureToken() {
         if (this.accessToken && Date.now() < this.tokenExpiry - 60000) {
@@ -100,25 +173,38 @@ class HiloApi {
         return this.loginInFlight;
     }
     async refreshAccessToken() {
-        this.log.debug('Refreshing Hilo access token');
-        const body = new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: this.currentRefreshToken,
-            client_id: CLIENT_ID,
-            scope: SCOPE,
-        }).toString();
-        const path = `/${B2C_TENANT}/oauth2/v2.0/token?p=${B2C_POLICY}`;
-        const res = await httpsRequest('POST', B2C_HOST, path, {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        }, body);
-        if (res.status >= 400) {
-            throw new Error(`Token refresh failed: HTTP ${res.status}: ${res.data}`);
+        const candidates = this.refreshTokenCandidates();
+        if (candidates.length === 0) {
+            throw new Error('No Hilo refresh token available — configure homebridge-hilo or set "refreshToken"');
         }
-        const json = JSON.parse(res.data);
-        this.accessToken = json.access_token;
-        this.currentRefreshToken = json.refresh_token ?? this.currentRefreshToken;
-        this.tokenExpiry = Date.now() + json.expires_in * 1000;
-        this.log.debug('Hilo access token refreshed');
+        // Try each token in order; a rejected one (e.g. expired) falls through to the next.
+        const path = `/${B2C_TENANT}/oauth2/v2.0/token?p=${B2C_POLICY}`;
+        let lastError = null;
+        for (const { token, source } of candidates) {
+            this.log.debug(`Refreshing Hilo access token (using the ${source})`);
+            const body = new URLSearchParams({
+                grant_type: 'refresh_token',
+                refresh_token: token,
+                client_id: CLIENT_ID,
+                scope: SCOPE,
+            }).toString();
+            const res = await this.request('POST', B2C_HOST, path, {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            }, body);
+            if (res.status >= 400) {
+                lastError = new Error(`Token refresh failed: HTTP ${res.status}: ${res.data}`);
+                this.log.debug(`Token refresh with the ${source} was rejected (HTTP ${res.status})`);
+                continue;
+            }
+            const json = JSON.parse(res.data);
+            this.accessToken = json.access_token;
+            if (json.refresh_token)
+                this.rotatedRefreshToken = json.refresh_token;
+            this.tokenExpiry = Date.now() + json.expires_in * 1000;
+            this.log.debug('Hilo access token refreshed');
+            return;
+        }
+        throw lastError ?? new Error('Token refresh failed');
     }
     apiHeaders() {
         return {
@@ -138,7 +224,7 @@ class HiloApi {
         ];
         for (const path of candidates) {
             this.log.debug(`Trying location endpoint: ${path}`);
-            const res = await httpsRequest('GET', 'api.hiloenergie.com', path, this.apiHeaders());
+            const res = await this.request('GET', 'api.hiloenergie.com', path, this.apiHeaders());
             if (res.status === 200) {
                 this.log.debug(`Locations response from ${path}: ${res.data}`);
                 const data = JSON.parse(res.data);
@@ -170,7 +256,7 @@ class HiloApi {
             variables: { locationHiloId: locationId },
         });
         this.log.debug(`Querying Hilo GraphQL for gDState (location: ${locationId})`);
-        const res = await httpsRequest('POST', GRAPHQL_HOST, GRAPHQL_PATH, this.apiHeaders(), requestBody);
+        const res = await this.request('POST', GRAPHQL_HOST, GRAPHQL_PATH, this.apiHeaders(), requestBody);
         if (res.status >= 400) {
             throw new Error(`GraphQL request failed: HTTP ${res.status}: ${res.data}`);
         }

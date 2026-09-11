@@ -9,7 +9,11 @@ export declare class HiloChallengePlatform implements DynamicPlatformPlugin {
     private readonly cachedAccessories;
     private readonly sensorAccessories;
     private readonly pollInterval;
+    private readonly statePath;
     private locationId;
+    private tracked;
+    private lastError;
+    private stateWriteFailing;
     constructor(log: Logger, config: PlatformConfig, homebridgeApi: API);
     configureAccessory(accessory: PlatformAccessory): void;
     private init;
@@ -18,5 +22,10 @@ export declare class HiloChallengePlatform implements DynamicPlatformPlugin {
      */
     private isChallengeSeason;
     private poll;
+    /**
+     * Writes the shared state file for other plugins. Never throws; a failure is logged
+     * as a warning once, then at debug level until a write succeeds again.
+     */
+    private writeState;
 }
 //# sourceMappingURL=platform.d.ts.map

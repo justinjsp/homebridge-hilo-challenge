@@ -2,7 +2,7 @@ import { Service, PlatformAccessory, CharacteristicValue, Logger, HAP } from 'ho
 import { ChallengePhaseName } from './hiloApi';
 
 // Which phase this sensor fires for
-export type SensorPhase = 'preheat' | 'reduction';
+export type SensorPhase = 'preheat' | 'reduction' | 'recovery';
 
 export class HiloChallengeSensorAccessory {
   private readonly service: Service;
@@ -42,12 +42,8 @@ export class HiloChallengeSensorAccessory {
   updatePhase(currentPhase: ChallengePhaseName): void {
     const wasActive = this.active;
 
-    if (this.phase === 'reduction') {
-      this.active = currentPhase === 'reduction';
-    } else {
-      // preheat sensor is active during preheat only
-      this.active = currentPhase === 'preheat';
-    }
+    // Each sensor is active during its own phase only
+    this.active = currentPhase === this.phase;
 
     if (this.active !== wasActive) {
       this.log.info(

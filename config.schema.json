@@ -2,7 +2,7 @@
   "pluginAlias": "HiloChallenge",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "⚠️ **Requires the [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) plugin.** This plugin reuses the refresh token from homebridge-hilo — install and configure that plugin first, then copy its `refreshToken` value into the field below.",
+  "headerDisplay": "⚠️ **Requires the [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) plugin.** This plugin reuses homebridge-hilo's refresh token and reads it automatically from your Homebridge config whenever homebridge-hilo is configured — install and set up that plugin first. The refresh token field below is only a fallback.",
   "schema": {
     "type": "object",
     "properties": {
@@ -13,9 +13,9 @@
         "description": "Platform name shown in the Homebridge logs."
       },
       "refreshToken": {
-        "title": "Hilo Refresh Token",
+        "title": "Hilo Refresh Token (optional fallback)",
         "type": "string",
-        "description": "Your Hilo refresh token — copy this from your homebridge-hilo plugin config."
+        "description": "Leave blank when homebridge-hilo is configured — its current refresh token is read automatically from your Homebridge config. Only used as a fallback, e.g. when homebridge-hilo is not in this config."
       },
       "locationId": {
         "title": "Location ID (optional)",
@@ -30,6 +30,6 @@
         "maximum": 300
       }
     },
-    "required": ["name", "refreshToken"]
+    "required": ["name"]
   }
 }

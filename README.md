@@ -5,9 +5,10 @@
 
 A [Homebridge](https://homebridge.io) plugin that exposes [Hilo](https://www.hiloenergie.com) (Hydro-Québec) demand response challenge phases as **HomeKit contact sensors**.
 
-Two sensors are created:
+Three sensors are created:
 - **Hilo Preheat** — opens during the pre-heat phase
 - **Hilo Reduction** — opens during the reduction (peak demand) phase
+- **Hilo Recovery** — opens during the recovery phase that follows a reduction
 
 When a sensor opens, it can trigger HomeKit automations — for example, automatically disabling EV chargers during a reduction event.
 
@@ -15,20 +16,20 @@ When a sensor opens, it can trigger HomeKit automations — for example, automat
 
 ## ⚠️ Prerequisite: install `homebridge-hilo` first
 
-This plugin **does not authenticate with Hilo on its own.** It reuses the refresh token obtained by the [**homebridge-hilo**](https://github.com/johannrichard/homebridge-hilo) plugin.
+This plugin **does not authenticate with Hilo on its own.** It reuses the refresh token obtained by the [**homebridge-hilo**](https://github.com/johannrichard/homebridge-hilo) plugin, and reads it **automatically** from your Homebridge `config.json` — nothing to copy.
 
 **You must install and configure [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) before this plugin.** If it isn't already set up:
 
 1. Install **homebridge-hilo** from the Homebridge UI and complete its login flow.
 2. Confirm it's working (your Hilo devices appear in HomeKit).
-3. Then install this plugin and copy the `refreshToken` from the homebridge-hilo config (see [Getting Your Refresh Token](#getting-your-refresh-token) below).
+3. Then install this plugin. It picks up homebridge-hilo's refresh token by itself (see [Refresh Token](#refresh-token) below).
 
-Without a valid refresh token from homebridge-hilo, this plugin has nothing to authenticate with and will not register any sensors.
+Without a refresh token — from homebridge-hilo, or the optional fallback field — this plugin has nothing to authenticate with and will not register any sensors.
 
 ## Requirements
 
 - A [Hilo](https://www.hiloenergie.com) account with at least one enrolled device (thermostat or water heater)
-- The [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) plugin already installed and working (this plugin reuses the same refresh token)
+- The [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) plugin already installed and working (this plugin reuses its refresh token)
 - Homebridge v1.6.0 or later
 - Node.js v20 or later
 
@@ -48,7 +49,6 @@ Configure via the Homebridge UI, or add to your `config.json`:
 {
   "platform": "HiloChallenge",
   "name": "Hilo Challenge",
-  "refreshToken": "your-hilo-refresh-token",
   "locationId": "urn:hilo:crm:XXXXX-XXXXX:0",
   "pollInterval": 60
 }
@@ -56,15 +56,15 @@ Configure via the Homebridge UI, or add to your `config.json`:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `refreshToken` | ✅ | — | Your Hilo refresh token — copy from your homebridge-hilo plugin config |
+| `refreshToken` | ❌ | from homebridge-hilo | Fallback only — leave blank when homebridge-hilo is configured |
 | `locationId` | ❌ | auto | Your Hilo location URN. Found in homebridge-hilo logs: `Subscribed to updates for location urn:hilo:crm:...` |
 | `pollInterval` | ❌ | `60` | How often (in seconds) to poll during challenge season (30–300) |
 
-### Getting Your Refresh Token
+### Refresh Token
 
-1. Open your Homebridge `config.json`
-2. Find the `homebridge-hilo` platform entry
-3. Copy the `refreshToken` value into this plugin's config
+homebridge-hilo rotates its refresh token and saves the new one back into `config.json`. Before every token refresh, this plugin reads the current token from the homebridge-hilo (`"platform": "Hilo"`) entry in `config.json`, so it never goes stale.
+
+The `refreshToken` field is only a fallback — for example when homebridge-hilo isn't in the same Homebridge config. Tokens are tried in this order: homebridge-hilo's token, then the last token Hilo rotated to this plugin, then this plugin's `refreshToken` (the oldest, since it never changes). If one is rejected, the next is tried.
 
 ### Finding Your Location ID
 
@@ -84,8 +84,8 @@ During challenge season (December–March), the plugin polls the Hilo GraphQL AP
 |---|---|
 | `PRE_HEAT` | Hilo Preheat opens |
 | `ACTIVE` | Hilo Reduction opens |
-| `RECOVERY` | both sensors closed |
-| `OFF` / absent | both sensors closed |
+| `RECOVERY` | Hilo Recovery opens |
+| `OFF` / absent | all sensors closed |
 
 ## Automations
 
@@ -95,6 +95,38 @@ Use the **Hilo Reduction** sensor to automatically manage energy-intensive devic
 - **When** Hilo Reduction sensor closes → **Turn on** EV charger(s)
 
 Pairs well with **[homebridge-grizzl-e](https://github.com/justinjsp/homebridge-grizzl-e)** for automatic EV charger control.
+
+## For Other Plugins
+
+Other plugins can follow the challenge without talking to Hilo themselves (for example, homebridge-ecoflow-delta3). This plugin keeps a small JSON file in the Homebridge storage directory:
+
+```
+<storage path>/hilo-challenge/state.json     (e.g. ~/.homebridge/hilo-challenge/state.json)
+```
+
+It is written at startup and after every poll — including off-season, when no API call is made — atomically (temp file + rename, so it is never half-written) with mode `0644`.
+
+```json
+{
+  "version": 1,
+  "updatedAt": "2026-01-15T21:05:00.000Z",
+  "season": true,
+  "phase": "reduction",
+  "phaseSince": "2026-01-15T21:00:00.000Z",
+  "pollIntervalSeconds": 60,
+  "error": null
+}
+```
+
+| Field | Description |
+|---|---|
+| `version` | Format version — currently `1`. Changes that break readers will bump it. |
+| `updatedAt` | ISO 8601 UTC time of this write. If it is much older than `pollIntervalSeconds`, treat the data as stale (the plugin isn't running). |
+| `season` | `true` from December 1 to March 31, when challenges can happen |
+| `phase` | `none`, `preheat`, `reduction` or `recovery` |
+| `phaseSince` | ISO time the current phase was first seen, or `null` when `phase` is `none` |
+| `pollIntervalSeconds` | How often the file is refreshed |
+| `error` | Message from the last poll if it failed, otherwise `null`. On a failed poll `phase` and `phaseSince` keep their last known values. |
 
 ## Issues & Support
 

@@ -1,6 +1,6 @@
 import { PlatformAccessory, Logger, HAP } from 'homebridge';
 import { ChallengePhaseName } from './hiloApi';
-export type SensorPhase = 'preheat' | 'reduction';
+export type SensorPhase = 'preheat' | 'reduction' | 'recovery';
 export declare class HiloChallengeSensorAccessory {
     private readonly hap;
     private readonly log;

@@ -30,13 +30,8 @@ class HiloChallengeSensorAccessory {
     }
     updatePhase(currentPhase) {
         const wasActive = this.active;
-        if (this.phase === 'reduction') {
-            this.active = currentPhase === 'reduction';
-        }
-        else {
-            // preheat sensor is active during preheat only
-            this.active = currentPhase === 'preheat';
-        }
+        // Each sensor is active during its own phase only
+        this.active = currentPhase === this.phase;
         if (this.active !== wasActive) {
             this.log.info(`[${this.accessory.displayName}] ${this.active ? 'ACTIVE (challenge phase started)' : 'INACTIVE (challenge phase ended)'}`);
             this.service.updateCharacteristic(this.hap.Characteristic.ContactSensorState, this.getContactState());
