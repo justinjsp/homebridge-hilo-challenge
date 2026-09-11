@@ -30,7 +30,7 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "test": "tsc -p tsconfig.test.json && node --test build-test/test/",
+    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "homebridge": {
