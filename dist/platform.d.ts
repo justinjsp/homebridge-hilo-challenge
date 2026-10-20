@@ -1,20 +1,31 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
+import { HttpsRequester } from './hiloAuth';
 export declare const PLATFORM_NAME = "HiloChallenge";
 export declare const PLUGIN_NAME = "homebridge-hilo-challenge";
+export declare const SCHEDULE_REFRESH_MS: number;
 export declare class HiloChallengePlatform implements DynamicPlatformPlugin {
     readonly log: Logger;
     readonly config: PlatformConfig;
     readonly homebridgeApi: API;
+    private readonly deps;
     private readonly hiloApi;
     private readonly cachedAccessories;
     private readonly sensorAccessories;
     private readonly pollInterval;
     private readonly statePath;
     private locationId;
+    private timer;
+    private schedule;
+    private scheduleFetchedAt;
+    private checkedOffSeason;
     private tracked;
     private lastError;
+    private loggedError;
     private stateWriteFailing;
-    constructor(log: Logger, config: PlatformConfig, homebridgeApi: API);
+    constructor(log: Logger, config: PlatformConfig, homebridgeApi: API, deps?: {
+        request?: HttpsRequester;
+        now?: () => Date;
+    });
     configureAccessory(accessory: PlatformAccessory): void;
     private init;
     /**
@@ -22,6 +33,10 @@ export declare class HiloChallengePlatform implements DynamicPlatformPlugin {
      */
     private isChallengeSeason;
     private poll;
+    private refreshSchedule;
+    /** Records the poll error for the state file, logging each new message once. */
+    private setError;
+    private now;
     /**
      * Writes the shared state file for other plugins. Never throws; a failure is logged
      * as a warning once, then at debug level until a write succeeds again.

@@ -1,0 +1,96 @@
+<div class="card card-body mb-3">
+  <h5>Hilo login / Connexion à Hilo</h5>
+
+  <p id="status" class="mb-2">…</p>
+
+  <p class="small mb-2">
+    This plugin has its own Hilo login. It never uses homebridge-hilo's token, so the two plugins can't
+    sign each other out.<br>
+    <span lang="fr">Ce plugiciel a sa propre connexion à Hilo. Il n'utilise jamais le jeton de homebridge-hilo :
+    les deux plugiciels ne peuvent donc pas se déconnecter l'un l'autre.</span>
+  </p>
+
+  <ol class="small mb-3">
+    <li>
+      Choose <strong>Log in to Hilo</strong> and sign in with your Hilo account in the window that opens.<br>
+      <span lang="fr">Choisissez <strong>Se connecter à Hilo</strong>, puis connectez-vous avec votre compte Hilo
+      dans la fenêtre qui s'ouvre.</span>
+    </li>
+    <li>
+      You'll land on a Home Assistant or error page. That's expected. Copy the <strong>whole address</strong>
+      from that window's address bar and paste it below.<br>
+      <span lang="fr">Vous arriverez sur une page de Home Assistant ou une page d'erreur : c'est normal. Copiez
+      <strong>l'adresse complète</strong> dans la barre d'adresse de cette fenêtre et collez-la ci-dessous.</span>
+    </li>
+  </ol>
+
+  <div class="mb-2">
+    <button type="button" class="btn btn-primary" id="start">Log in to Hilo / Se connecter à Hilo</button>
+  </div>
+
+  <div id="finish-step" style="display: none">
+    <label for="redirect" class="small">Address after logging in / Adresse après la connexion</label>
+    <input type="text" class="form-control mb-2" id="redirect" autocomplete="off" spellcheck="false"
+      placeholder="https://my.home-assistant.io/redirect/oauth?code=…">
+    <button type="button" class="btn btn-primary" id="finish">Finish / Terminer</button>
+  </div>
+
+  <div class="mt-2">
+    <button type="button" class="btn btn-link btn-sm p-0" id="logout" style="display: none">
+      Log out / Se déconnecter
+    </button>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function showStatus({ loggedIn, updatedAt }) {
+    $('status').textContent = loggedIn
+      ? `Logged in. Token last renewed ${new Date(updatedAt).toLocaleString()}. / Connecté. Jeton renouvelé le ${new Date(updatedAt).toLocaleString('fr-CA')}.`
+      : 'Not logged in. The sensors stay closed until you log in. / Non connecté. Les capteurs restent fermés tant que vous ne vous connectez pas.';
+    $('logout').style.display = loggedIn ? '' : 'none';
+  }
+
+  homebridge.addEventListener('ready', async () => {
+    homebridge.showSchemaForm();
+    try {
+      showStatus(await homebridge.request('/status'));
+    } catch (e) {
+      $('status').textContent = e.message;
+    }
+  });
+
+  $('start').addEventListener('click', async () => {
+    try {
+      const { url } = await homebridge.request('/login/start');
+      window.open(url, '_blank');
+      $('finish-step').style.display = '';
+      $('redirect').value = '';
+      $('redirect').focus();
+    } catch (e) {
+      homebridge.toast.error(e.message);
+    }
+  });
+
+  $('finish').addEventListener('click', async () => {
+    homebridge.showSpinner();
+    try {
+      showStatus(await homebridge.request('/login/finish', { redirect: $('redirect').value }));
+      $('finish-step').style.display = 'none';
+      homebridge.toast.success('Logged in to Hilo. / Connecté à Hilo.');
+    } catch (e) {
+      homebridge.toast.error(e.message);
+    } finally {
+      homebridge.hideSpinner();
+    }
+  });
+
+  $('logout').addEventListener('click', async () => {
+    try {
+      showStatus(await homebridge.request('/logout'));
+    } catch (e) {
+      homebridge.toast.error(e.message);
+    }
+  });
+</script>

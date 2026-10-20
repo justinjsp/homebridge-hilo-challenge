@@ -2,7 +2,8 @@
   "pluginAlias": "HiloChallenge",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "⚠️ **Requires the [homebridge-hilo](https://github.com/johannrichard/homebridge-hilo) plugin.** This plugin reuses homebridge-hilo's refresh token and reads it automatically from your Homebridge config whenever homebridge-hilo is configured — install and set up that plugin first. The refresh token field below is only a fallback.",
+  "customUi": true,
+  "headerDisplay": "Log in to Hilo on this settings page. This plugin has its own Hilo login and never uses the token of [homebridge-hilo](https://github.com/SanterreJo/homebridge-hilo), so the two plugins can't sign each other out. homebridge-hilo is not required.",
   "schema": {
     "type": "object",
     "properties": {
@@ -12,22 +13,18 @@
         "default": "Hilo Challenge",
         "description": "Platform name shown in the Homebridge logs."
       },
-      "refreshToken": {
-        "title": "Hilo Refresh Token (optional fallback)",
-        "type": "string",
-        "description": "Leave blank when homebridge-hilo is configured — its current refresh token is read automatically from your Homebridge config. Only used as a fallback, e.g. when homebridge-hilo is not in this config."
-      },
       "locationId": {
         "title": "Location ID (optional)",
         "type": "string",
-        "description": "Your Hilo location URN. Found in homebridge-hilo logs: 'Subscribed to updates for location urn:hilo:crm:...'  Leave blank to auto-discover."
+        "description": "Only needed if your Hilo account has more than one location. Either the numeric location ID or the URN (urn:hilo:crm:…) shown in the logs. Leave blank to use the account's first location."
       },
       "pollInterval": {
         "title": "Poll Interval (seconds)",
         "type": "integer",
         "default": 60,
         "minimum": 30,
-        "maximum": 300
+        "maximum": 300,
+        "description": "How often the challenge phase is checked and the state file updated. The challenge schedule itself is fetched from Hilo at most every 5 minutes."
       }
     },
     "required": ["name"]

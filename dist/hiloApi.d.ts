@@ -1,61 +1,61 @@
+import { HttpsRequester } from './hiloAuth';
+export type { HttpsRequester } from './hiloAuth';
 export type ChallengePhaseName = 'none' | 'preheat' | 'reduction' | 'recovery';
+type ActivePhase = Exclude<ChallengePhaseName, 'none'>;
 export type HiloLog = {
     info: (m: string) => void;
     debug: (m: string) => void;
     error: (m: string) => void;
 };
-export type HttpsRequester = (method: string, hostname: string, path: string, headers: Record<string, string>, body?: string) => Promise<{
-    status: number;
-    data: string;
-}>;
-export type RefreshTokenSource = 'homebridge-hilo config' | 'plugin config' | 'rotated token';
-export interface RefreshTokenCandidate {
-    token: string;
-    source: RefreshTokenSource;
+export declare const NOT_LOGGED_IN = "Not logged in to Hilo. Open this plugin's settings in the Homebridge UI and choose \"Log in to Hilo\".";
+export declare const LOGIN_EXPIRED = "The Hilo login has expired or was revoked. Open this plugin's settings in the Homebridge UI and log in to Hilo again.";
+export declare class NotLoggedInError extends Error {
+}
+export interface HiloLocation {
+    id: string;
+    hiloId: string;
+}
+export interface PhaseWindow {
+    start: number;
+    end: number;
+}
+export interface ChallengeEvent {
+    id: string;
+    phases: Partial<Record<ActivePhase, PhaseWindow>>;
 }
 /**
- * Reads the refresh token homebridge-hilo keeps in Homebridge's config.json. homebridge-hilo
- * rotates that token and writes the new one back, so it stays fresher than a copy pasted
- * into this plugin's config. Returns null when there is no usable token; never throws.
+ * Turns one event from Hilo's challenge events API into its phase windows. Phase keys
+ * look like "preheatStartDateUTC" / "reductionEndDateUTC" (some API versions use a
+ * "…Utc" suffix). Returns null for events that won't run or have no usable phases.
  */
-export declare function readHomebridgeHiloToken(configPath: string | undefined, log?: {
-    debug: (m: string) => void;
-}): string | null;
+export declare function normalizeEvent(raw: unknown): ChallengeEvent | null;
+/** The challenge phase in effect at `now`, from the scheduled phase windows. */
+export declare function phaseAt(events: ChallengeEvent[], now: Date): ChallengePhaseName;
 /**
- * Orders the refresh tokens to try: homebridge-hilo's config token first (it is kept
- * fresh), then the last rotated token Hilo returned to us, then this plugin's configured
- * token (the oldest, as it never changes). Empty and duplicate tokens are dropped.
+ * Picks the location to follow. `configured` may be the numeric location id or the
+ * urn:hilo:crm:… id; without one, the account's first location is used.
  */
-export declare function orderRefreshTokens(fromHomebridgeHilo: string | null | undefined, configured: string | null | undefined, rotated: string | null | undefined): RefreshTokenCandidate[];
+export declare function pickLocation(list: unknown[], configured?: string): HiloLocation;
 export declare class HiloApi {
-    private readonly configuredRefreshToken;
+    private readonly authPath;
     private readonly log;
-    private readonly configPath?;
     private readonly request;
     private accessToken;
     private tokenExpiry;
-    private rotatedRefreshToken;
     private loginInFlight;
-    constructor(configuredRefreshToken: string | undefined, log: HiloLog, configPath?: string | undefined, request?: HttpsRequester);
-    /**
-     * The refresh tokens available right now, in the order they will be tried.
-     * Re-reads config.json each time, so homebridge-hilo's latest rotation is picked up.
-     */
-    refreshTokenCandidates(): RefreshTokenCandidate[];
+    private rejectedToken;
+    constructor(authPath: string, log: HiloLog, request?: HttpsRequester);
+    isLoggedIn(): boolean;
     private ensureToken;
     private refreshAccessToken;
-    private apiHeaders;
-    getLocationId(): Promise<string>;
+    private apiGet;
+    getLocation(configured?: string): Promise<HiloLocation>;
     /**
-     * Query the Hilo GraphQL API for the current challenge phase.
-     * Inspects the gDState field on each device in the location:
-     *   ACTIVE   → reduction phase
-     *   PRE_HEAT → preheat phase
-     *   RECOVERY → recovery phase
-     *   anything else (OFF, absent) → none
-     *
-     * Returns the first non-none phase found, or 'none' if no challenge is active.
+     * The location's upcoming and current challenges, with their phase windows.
+     * The events list may carry the phases inline; when an event doesn't, its detail
+     * record (…/Events/{id}) is fetched for them.
      */
-    getChallengePhase(locationId: string): Promise<ChallengePhaseName>;
+    getChallengeEvents(locationId: string): Promise<ChallengeEvent[]>;
 }
+export declare function errorMessage(err: unknown): string;
 //# sourceMappingURL=hiloApi.d.ts.map

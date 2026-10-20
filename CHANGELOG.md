@@ -8,31 +8,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Hilo Recovery** contact sensor — open while Hilo reports the `RECOVERY` phase
-  (previously recovery closed both sensors). The Preheat and Reduction sensors keep
-  their UUIDs and behaviour.
+- **Own Hilo login.** The plugin's settings page (custom Homebridge UI) has a
+  "Log in to Hilo" button: sign in, then paste the address you land on. This gives the
+  plugin its own Hilo session. Its refresh token is kept in
+  `<Homebridge storage>/hilo-challenge/auth.json` (mode 0600, not `config.json`),
+  replaced on disk each time Hilo rotates it, and re-read before every refresh, so a new
+  login takes effect without a restart. A rotation never overwrites a newer login.
+  "Log out" deletes the file.
+- **Hilo Recovery** contact sensor, open during the recovery phase. The Preheat and
+  Reduction sensors keep their UUIDs.
 - Shared state file for other plugins (e.g. homebridge-ecoflow-delta3) at
   `<Homebridge storage>/hilo-challenge/state.json`. Version 1 contract: `version`,
   `updatedAt`, `season`, `phase` (`none` / `preheat` / `reduction` / `recovery`),
   `phaseSince`, `pollIntervalSeconds` and `error`. Written atomically (mode 0644) at
-  startup and after every poll, including off-season ones. A failed poll keeps the
-  last known phase, sets `error` and still refreshes `updatedAt`. A phase written just
+  startup and after every poll, including off-season ones. A phase written just
   before a restart is carried over at startup, so readers don't see it briefly end.
 - Tests (`npm test`, Node's built-in test runner).
 
 ### Changed
-- The Hilo refresh token is now read from homebridge-hilo's `Hilo` platform entry in
-  Homebridge's `config.json` before every token refresh. Order: homebridge-hilo's
-  token, then the last token Hilo rotated to us, then this plugin's own `refreshToken`
-  (the oldest, since it never changes); a rejected token falls through to the next one.
-- `refreshToken` is now optional — only a fallback. The platform starts when either
-  it or a homebridge-hilo entry with a refresh token is present, and otherwise logs a
-  clear error and does not start. The config UI header and field description say so.
+- **Phase detection now uses Hilo's challenge events API**
+  (`/GDService/v1/api/Locations/{id}/Events`), which gives explicit preheat, reduction
+  and recovery start and end times, instead of the devices' `gDState` field. Only
+  `ACTIVE` is a real `gDState` value, so the Preheat sensor could never open before.
+  The schedule is fetched at most every 5 minutes and the phase is worked out from it
+  at every poll, so transitions land on time and survive brief API outages. Events the
+  user opted out of, and completed or cancelled ones, are ignored.
+- **Location discovery uses `/Automation/v1/api/Locations`.** `locationId` is now only
+  needed for accounts with several locations, and accepts the numeric ID or the URN.
+- The platform always starts and registers its sensors. Without a login it logs how to
+  log in, keeps the sensors closed and reports the reason in the state file's `error`.
+- Off-season, the plugin checks the API once at startup, then makes no calls.
+- Links now point to homebridge-hilo's current home, SanterreJo/homebridge-hilo.
 
-### Fixed
-- The copied `refreshToken` went stale once homebridge-hilo rotated it, so the plugin
-  could fail to authenticate after a Homebridge restart. It now follows
-  homebridge-hilo's current token.
+### Removed
+- **The plugin no longer uses homebridge-hilo's refresh token in any way**, neither
+  read from `config.json` nor pasted into this plugin's `refreshToken` field. Hilo
+  rotates refresh tokens on use, so sharing one could sign homebridge-hilo out. A
+  leftover `refreshToken` is ignored with a warning. homebridge-hilo is no longer a
+  prerequisite.
+- The GraphQL `gDState` query.
 
 ## [0.1.6] - 2026-08-24
 

@@ -1,285 +1,215 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HiloApi = void 0;
-exports.readHomebridgeHiloToken = readHomebridgeHiloToken;
-exports.orderRefreshTokens = orderRefreshTokens;
-const fs = __importStar(require("fs"));
-const https = __importStar(require("https"));
-// Azure B2C auth config — same values as homebridge-hilo
-const B2C_HOST = 'connexion.hiloenergie.com';
-const B2C_TENANT = 'HiloDirectoryB2C.onmicrosoft.com';
-const B2C_POLICY = 'B2C_1A_SIGN_IN';
-const CLIENT_ID = '1ca9f585-4a55-4085-8e30-9746a65fa561';
-const SCOPE = [
-    'openid',
-    'https://HiloDirectoryB2C.onmicrosoft.com/hiloapis/user_impersonation',
-    'offline_access',
-].join(' ');
-const GRAPHQL_HOST = 'platform.hiloenergie.com';
-const GRAPHQL_PATH = '/api/digital-twin/v3/graphql';
+exports.HiloApi = exports.NotLoggedInError = exports.LOGIN_EXPIRED = exports.NOT_LOGGED_IN = void 0;
+exports.normalizeEvent = normalizeEvent;
+exports.phaseAt = phaseAt;
+exports.pickLocation = pickLocation;
+exports.errorMessage = errorMessage;
+const hiloAuth_1 = require("./hiloAuth");
+const API_HOST = 'api.hiloenergie.com';
 const APIM_KEY = '20eeaedcb86945afa3fe792cea89b8bf';
-// homebridge-hilo's platform identifier in config.json. Homebridge also accepts the
-// fully-qualified "<plugin>.<platform>" form.
-const HOMEBRIDGE_HILO_PLATFORMS = ['Hilo', 'homebridge-hilo.Hilo'];
-// GraphQL query — inline fragments for every device type that exposes gDState.
-// gDState values observed: 'ACTIVE' (reduction), 'PRE_HEAT' (preheat),
-// 'RECOVERY' (recovery), 'OFF' / absent (no challenge).
-const GD_STATE_QUERY = `
-  query GetLocationGDState($locationHiloId: String!) {
-    getLocation(id: $locationHiloId) {
-      devices {
-        __typename
-        ... on BasicThermostat        { gDState }
-        ... on HeatingFloorThermostat { gDState }
-        ... on LowVoltageThermostat   { gDState }
-        ... on WaterHeater            { gDState }
-      }
-    }
-  }
-`;
-function httpsRequest(method, hostname, path, headers, body) {
-    return new Promise((resolve, reject) => {
-        const reqHeaders = { ...headers };
-        if (body) {
-            reqHeaders['Content-Length'] = Buffer.byteLength(body).toString();
-        }
-        const req = https.request({ hostname, path, method, headers: reqHeaders }, (res) => {
-            const chunks = [];
-            res.on('data', (c) => chunks.push(c));
-            res.on('end', () => resolve({ status: res.statusCode ?? 0, data: Buffer.concat(chunks).toString('utf8') }));
-        });
-        req.on('error', reject);
-        if (body)
-            req.write(body);
-        req.end();
-    });
+const LOCATIONS_PATH = '/Automation/v1/api/Locations';
+const eventsPath = (locationId) => `/GDService/v1/api/Locations/${encodeURIComponent(locationId)}/Events`;
+exports.NOT_LOGGED_IN = 'Not logged in to Hilo. Open this plugin\'s settings in the Homebridge UI and choose "Log in to Hilo".';
+exports.LOGIN_EXPIRED = 'The Hilo login has expired or was revoked. Open this plugin\'s settings in the Homebridge UI and log in to Hilo again.';
+class NotLoggedInError extends Error {
+}
+exports.NotLoggedInError = NotLoggedInError;
+// Event progress values that mean the event will not (or no longer) run.
+const FINISHED_PROGRESS = ['completed', 'cancelled', 'canceled'];
+// When several phases overlap (two events back to back), the most restrictive one wins.
+const PHASE_PRIORITY = ['reduction', 'preheat', 'recovery'];
+function parseUtc(value) {
+    if (typeof value !== 'string' || value === '')
+        return null;
+    // Hilo's times are UTC; some come without a zone designator
+    const withZone = /([zZ]|[+-]\d\d:?\d\d)$/.test(value) ? value : `${value}Z`;
+    const ms = Date.parse(withZone);
+    return Number.isNaN(ms) ? null : ms;
+}
+/** Events the user opted out of, or that are over or cancelled, never open a sensor. */
+function wontRun(event) {
+    if (event.isParticipating === false)
+        return true;
+    return typeof event.progress === 'string' && FINISHED_PROGRESS.includes(event.progress.toLowerCase());
 }
 /**
- * Reads the refresh token homebridge-hilo keeps in Homebridge's config.json. homebridge-hilo
- * rotates that token and writes the new one back, so it stays fresher than a copy pasted
- * into this plugin's config. Returns null when there is no usable token; never throws.
+ * Turns one event from Hilo's challenge events API into its phase windows. Phase keys
+ * look like "preheatStartDateUTC" / "reductionEndDateUTC" (some API versions use a
+ * "…Utc" suffix). Returns null for events that won't run or have no usable phases.
  */
-function readHomebridgeHiloToken(configPath, log) {
-    if (!configPath)
+function normalizeEvent(raw) {
+    if (!raw || typeof raw !== 'object')
         return null;
-    let raw;
-    try {
-        raw = fs.readFileSync(configPath, 'utf8');
-    }
-    catch (err) {
-        log?.debug(`Could not read ${configPath} for the homebridge-hilo token: ${err instanceof Error ? err.message : err}`);
+    const event = raw;
+    if (wontRun(event))
         return null;
-    }
-    let config;
-    try {
-        config = JSON.parse(raw);
-    }
-    catch {
-        // Deliberately not logging the parse error — it quotes file content, which may include tokens.
-        log?.debug(`Could not parse ${configPath} for the homebridge-hilo token (not valid JSON)`);
+    const rawPhases = event.phases;
+    if (!rawPhases || typeof rawPhases !== 'object')
         return null;
+    const times = {};
+    for (const [key, value] of Object.entries(rawPhases)) {
+        const ms = parseUtc(value);
+        if (ms !== null)
+            times[key.toLowerCase().replace(/(dateutc|utc)$/, '')] = ms;
     }
-    const platforms = Array.isArray(config?.platforms) ? config.platforms : [];
-    for (const entry of platforms) {
-        if (!entry || typeof entry !== 'object')
-            continue;
-        const { platform, refreshToken } = entry;
-        if (typeof platform === 'string' && HOMEBRIDGE_HILO_PLATFORMS.includes(platform) &&
-            typeof refreshToken === 'string' && refreshToken.trim() !== '') {
-            return refreshToken.trim();
+    const phases = {};
+    for (const phase of PHASE_PRIORITY) {
+        const start = times[`${phase}start`];
+        const end = times[`${phase}end`];
+        if (start !== undefined && end !== undefined && end > start)
+            phases[phase] = { start, end };
+    }
+    if (Object.keys(phases).length === 0)
+        return null;
+    return { id: String(event.id ?? '?'), phases };
+}
+/** The challenge phase in effect at `now`, from the scheduled phase windows. */
+function phaseAt(events, now) {
+    const t = now.getTime();
+    for (const phase of PHASE_PRIORITY) {
+        if (events.some((e) => {
+            const w = e.phases[phase];
+            return w !== undefined && w.start <= t && t < w.end;
+        })) {
+            return phase;
         }
     }
-    log?.debug(`No homebridge-hilo ("Hilo") platform with a refreshToken in ${configPath}`);
-    return null;
+    return 'none';
+}
+/** Hilo list responses are usually bare arrays; accept the common wrappers too. */
+function asList(data) {
+    if (Array.isArray(data))
+        return data;
+    if (data && typeof data === 'object') {
+        const obj = data;
+        for (const key of ['items', 'events', 'value', 'locations']) {
+            if (Array.isArray(obj[key]))
+                return obj[key];
+        }
+    }
+    return [];
 }
 /**
- * Orders the refresh tokens to try: homebridge-hilo's config token first (it is kept
- * fresh), then the last rotated token Hilo returned to us, then this plugin's configured
- * token (the oldest, as it never changes). Empty and duplicate tokens are dropped.
+ * Picks the location to follow. `configured` may be the numeric location id or the
+ * urn:hilo:crm:… id; without one, the account's first location is used.
  */
-function orderRefreshTokens(fromHomebridgeHilo, configured, rotated) {
-    const candidates = [];
-    const add = (token, source) => {
-        const trimmed = token?.trim();
-        if (trimmed && !candidates.some((c) => c.token === trimmed)) {
-            candidates.push({ token: trimmed, source });
-        }
-    };
-    add(fromHomebridgeHilo, 'homebridge-hilo config');
-    add(rotated, 'rotated token');
-    add(configured, 'plugin config');
-    return candidates;
+function pickLocation(list, configured) {
+    const locations = list
+        .filter((l) => !!l && typeof l === 'object')
+        .filter((l) => l.id !== undefined && l.id !== null)
+        .map((l) => ({ id: String(l.id), hiloId: typeof l.locationHiloId === 'string' ? l.locationHiloId : '' }));
+    if (locations.length === 0)
+        throw new Error('Hilo returned no locations for this account');
+    const wanted = configured?.trim();
+    if (!wanted)
+        return locations[0];
+    const match = locations.find((l) => l.id === wanted || l.hiloId === wanted);
+    if (!match) {
+        const known = locations.map((l) => `${l.id} (${l.hiloId || 'no URN'})`).join(', ');
+        throw new Error(`Location "${wanted}" is not on this Hilo account. Locations found: ${known}`);
+    }
+    return match;
 }
 class HiloApi {
-    constructor(configuredRefreshToken, log, 
-    // Homebridge's config.json — re-read before every token refresh for homebridge-hilo's token
-    configPath, request = httpsRequest) {
-        this.configuredRefreshToken = configuredRefreshToken;
+    constructor(
+    // This plugin's own auth file (see hiloAuth.ts) — re-read before every token refresh,
+    // so a new login from the settings page is picked up without a restart.
+    authPath, log, request = hiloAuth_1.httpsRequest) {
+        this.authPath = authPath;
         this.log = log;
-        this.configPath = configPath;
         this.request = request;
         this.accessToken = null;
         this.tokenExpiry = 0;
-        this.rotatedRefreshToken = null;
         this.loginInFlight = null;
+        // A refresh token Hilo has rejected; not retried until a new login replaces it.
+        this.rejectedToken = null;
     }
-    /**
-     * The refresh tokens available right now, in the order they will be tried.
-     * Re-reads config.json each time, so homebridge-hilo's latest rotation is picked up.
-     */
-    refreshTokenCandidates() {
-        return orderRefreshTokens(readHomebridgeHiloToken(this.configPath, this.log), this.configuredRefreshToken, this.rotatedRefreshToken);
+    isLoggedIn() {
+        return (0, hiloAuth_1.readAuthFile)(this.authPath) !== null;
     }
     async ensureToken() {
-        if (this.accessToken && Date.now() < this.tokenExpiry - 60000) {
+        if (this.accessToken && Date.now() < this.tokenExpiry - 60000)
             return;
-        }
         if (this.loginInFlight)
             return this.loginInFlight;
         this.loginInFlight = this.refreshAccessToken().finally(() => { this.loginInFlight = null; });
         return this.loginInFlight;
     }
     async refreshAccessToken() {
-        const candidates = this.refreshTokenCandidates();
-        if (candidates.length === 0) {
-            throw new Error('No Hilo refresh token available — configure homebridge-hilo or set "refreshToken"');
+        const auth = (0, hiloAuth_1.readAuthFile)(this.authPath);
+        if (!auth)
+            throw new NotLoggedInError(exports.NOT_LOGGED_IN);
+        if (auth.refreshToken === this.rejectedToken)
+            throw new NotLoggedInError(exports.LOGIN_EXPIRED);
+        this.log.debug('Refreshing the Hilo access token');
+        let tokens;
+        try {
+            tokens = await (0, hiloAuth_1.redeemRefreshToken)(auth.refreshToken, this.request);
         }
-        // Try each token in order; a rejected one (e.g. expired) falls through to the next.
-        const path = `/${B2C_TENANT}/oauth2/v2.0/token?p=${B2C_POLICY}`;
-        let lastError = null;
-        for (const { token, source } of candidates) {
-            this.log.debug(`Refreshing Hilo access token (using the ${source})`);
-            const body = new URLSearchParams({
-                grant_type: 'refresh_token',
-                refresh_token: token,
-                client_id: CLIENT_ID,
-                scope: SCOPE,
-            }).toString();
-            const res = await this.request('POST', B2C_HOST, path, {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            }, body);
-            if (res.status >= 400) {
-                lastError = new Error(`Token refresh failed: HTTP ${res.status}: ${res.data}`);
-                this.log.debug(`Token refresh with the ${source} was rejected (HTTP ${res.status})`);
-                continue;
+        catch (err) {
+            if (err instanceof hiloAuth_1.TokenRequestError && err.invalidGrant) {
+                this.rejectedToken = auth.refreshToken;
+                throw new NotLoggedInError(exports.LOGIN_EXPIRED);
             }
-            const json = JSON.parse(res.data);
-            this.accessToken = json.access_token;
-            if (json.refresh_token)
-                this.rotatedRefreshToken = json.refresh_token;
-            this.tokenExpiry = Date.now() + json.expires_in * 1000;
-            this.log.debug('Hilo access token refreshed');
-            return;
+            throw err;
         }
-        throw lastError ?? new Error('Token refresh failed');
+        // Save the rotated token first: the old one may stop working now that it's been used.
+        try {
+            if (!(0, hiloAuth_1.saveRotatedToken)(this.authPath, auth.sessionId, tokens.refreshToken)) {
+                this.log.debug('A new Hilo login was saved meanwhile; using it from the next refresh');
+            }
+        }
+        catch (err) {
+            this.log.error(`Could not save the rotated Hilo token to ${this.authPath}: ${errorMessage(err)}`);
+        }
+        this.accessToken = tokens.accessToken;
+        this.tokenExpiry = Date.now() + tokens.expiresIn * 1000;
+        this.log.debug('Hilo access token refreshed');
     }
-    apiHeaders() {
-        return {
+    async apiGet(path) {
+        await this.ensureToken();
+        const res = await this.request('GET', API_HOST, path, {
             Authorization: `Bearer ${this.accessToken}`,
             'Ocp-Apim-Subscription-Key': APIM_KEY,
-            'Content-Type': 'application/json',
-        };
+            Accept: 'application/json',
+        });
+        if (res.status === 401)
+            this.accessToken = null; // refresh on the next call
+        if (res.status >= 400)
+            throw new Error(`GET ${path} failed: HTTP ${res.status}: ${res.data}`);
+        return res.data.trim() === '' ? null : JSON.parse(res.data);
     }
-    async getLocationId() {
-        await this.ensureToken();
-        // Try known REST endpoint patterns. These may return 404 on newer API versions —
-        // if so, set "locationId" manually in your config (see README).
-        const candidates = [
-            '/v2/api/Locations',
-            '/GDService/v1/api/Locations',
-            '/v1/api/Locations',
-        ];
-        for (const path of candidates) {
-            this.log.debug(`Trying location endpoint: ${path}`);
-            const res = await this.request('GET', 'api.hiloenergie.com', path, this.apiHeaders());
-            if (res.status === 200) {
-                this.log.debug(`Locations response from ${path}: ${res.data}`);
-                const data = JSON.parse(res.data);
-                const locations = Array.isArray(data)
-                    ? data
-                    : (data.items ?? data.locations ?? data.value ?? []);
-                if (locations.length > 0)
-                    return String(locations[0].id);
-            }
-            this.log.debug(`${path} returned ${res.status}`);
-        }
-        throw new Error('Could not auto-discover location ID. Add "locationId" to your config. ' +
-            'You can find it in the homebridge-hilo logs — look for "Subscribed to updates for location".');
+    async getLocation(configured) {
+        const data = await this.apiGet(LOCATIONS_PATH);
+        return pickLocation(asList(data), configured);
     }
     /**
-     * Query the Hilo GraphQL API for the current challenge phase.
-     * Inspects the gDState field on each device in the location:
-     *   ACTIVE   → reduction phase
-     *   PRE_HEAT → preheat phase
-     *   RECOVERY → recovery phase
-     *   anything else (OFF, absent) → none
-     *
-     * Returns the first non-none phase found, or 'none' if no challenge is active.
+     * The location's upcoming and current challenges, with their phase windows.
+     * The events list may carry the phases inline; when an event doesn't, its detail
+     * record (…/Events/{id}) is fetched for them.
      */
-    async getChallengePhase(locationId) {
-        await this.ensureToken();
-        const requestBody = JSON.stringify({
-            query: GD_STATE_QUERY,
-            variables: { locationHiloId: locationId },
-        });
-        this.log.debug(`Querying Hilo GraphQL for gDState (location: ${locationId})`);
-        const res = await this.request('POST', GRAPHQL_HOST, GRAPHQL_PATH, this.apiHeaders(), requestBody);
-        if (res.status >= 400) {
-            throw new Error(`GraphQL request failed: HTTP ${res.status}: ${res.data}`);
-        }
-        const json = JSON.parse(res.data);
-        if (json.errors?.length) {
-            throw new Error(`GraphQL errors: ${json.errors.map((e) => e.message).join(', ')}`);
-        }
-        const devices = json.data?.getLocation?.devices ?? [];
-        this.log.debug(`GraphQL returned ${devices.length} device(s)`);
-        for (const device of devices) {
-            const state = device.gDState;
-            if (!state || state === 'OFF')
+    async getChallengeEvents(locationId) {
+        const list = asList(await this.apiGet(`${eventsPath(locationId)}?active=true`));
+        this.log.debug(`Hilo returned ${list.length} challenge event(s)`);
+        const events = [];
+        for (const item of list) {
+            if (!item || typeof item !== 'object')
                 continue;
-            this.log.debug(`Device ${device.__typename ?? 'unknown'} gDState: ${state}`);
-            if (state === 'ACTIVE')
-                return 'reduction';
-            if (state === 'PRE_HEAT')
-                return 'preheat';
-            if (state === 'RECOVERY')
-                return 'recovery';
+            const summary = item;
+            let event = normalizeEvent(summary);
+            if (!event && !summary.phases && summary.id !== undefined && !wontRun(summary)) {
+                const detail = await this.apiGet(`${eventsPath(locationId)}/${encodeURIComponent(String(summary.id))}`);
+                event = normalizeEvent(detail);
+            }
+            if (event)
+                events.push(event);
         }
-        return 'none';
+        return events;
     }
 }
 exports.HiloApi = HiloApi;
+function errorMessage(err) {
+    return err instanceof Error ? err.message : String(err);
+}
 //# sourceMappingURL=hiloApi.js.map
