@@ -45,8 +45,24 @@ class UiServer extends HomebridgePluginUiServer {
       this.pending = null;
       return this.status();
     } catch (err) {
-      throw new RequestError(err instanceof Error ? err.message : String(err), { status: 400 });
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Hilo login failed: ${message} (pasted: ${describePasted(payload && payload.redirect)})`);
+      throw new RequestError(message, { status: 400 });
     }
+  }
+}
+
+// What the pasted text looked like, for the log: site, path and parameter names only,
+// never the values (the login code is a secret until it's used).
+function describePasted(pasted) {
+  const text = String(pasted || '').trim();
+  if (text === '') return 'nothing';
+  try {
+    const url = new URL(text);
+    const names = [...url.searchParams.keys(), ...new URLSearchParams(url.hash.replace(/^#/, '')).keys()];
+    return `${url.host}${url.pathname} with ${names.length ? names.join(', ') : 'no parameters'}`;
+  } catch {
+    return `${text.length} characters, not a web address`;
   }
 }
 

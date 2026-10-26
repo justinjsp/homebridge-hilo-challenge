@@ -51,6 +51,7 @@
     <input type="text" class="form-control mb-2" id="redirect" autocomplete="off" spellcheck="false"
       placeholder="https://my.home-assistant.io/redirect/oauth?code=…">
     <button type="button" class="btn btn-primary" id="finish">Finish / Terminer</button>
+    <div class="alert alert-danger small mt-2 mb-0" id="error" role="alert" style="display: none"></div>
   </div>
 
   <div class="mt-2">
@@ -68,6 +69,14 @@
       ? `Logged in. Token last renewed ${new Date(updatedAt).toLocaleString()}. / Connecté. Jeton renouvelé le ${new Date(updatedAt).toLocaleString('fr-CA')}.`
       : 'Not logged in. The sensors stay closed until you log in. / Non connecté. Les capteurs restent fermés tant que vous ne vous connectez pas.';
     $('logout').style.display = loggedIn ? '' : 'none';
+  }
+
+  // Errors also show on the page itself: the toast is easy to miss, or may not show at all.
+  function showError(message) {
+    $('error').textContent = message
+      ? `Login failed / La connexion a échoué : ${message}`
+      : '';
+    $('error').style.display = message ? '' : 'none';
   }
 
   homebridge.addEventListener('ready', async () => {
@@ -90,6 +99,7 @@
       }
       document.querySelectorAll('.login-link').forEach((a) => { a.href = url; });
       $('finish-step').style.display = '';
+      showError('');
       $('redirect').value = '';
       $('redirect').focus();
     } catch (e) {
@@ -101,12 +111,14 @@
   });
 
   $('finish').addEventListener('click', async () => {
+    showError('');
     homebridge.showSpinner();
     try {
       showStatus(await homebridge.request('/login/finish', { redirect: $('redirect').value }));
       $('finish-step').style.display = 'none';
       homebridge.toast.success('Logged in to Hilo. / Connecté à Hilo.');
     } catch (e) {
+      showError(e.message);
       homebridge.toast.error(e.message);
     } finally {
       homebridge.hideSpinner();
