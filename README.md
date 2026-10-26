@@ -20,7 +20,8 @@ This plugin has **its own Hilo login**. It does not need, read or use the token 
 
 1. Install the plugin and open its **settings** in the Homebridge UI.
 2. Choose **Log in to Hilo** and sign in with your Hilo account in the window that opens.
-3. After signing in you land on a Home Assistant page or an error page. That's expected (the Hilo app only allows that address as a login return page). Copy the **whole address** from that window's address bar, paste it into the settings page and choose **Finish**.
+3. After signing in you land on a **My Home Assistant** page that asks for a Home Assistant URL. That's expected: the Hilo app only allows that address as a login return page, and you don't need Home Assistant. **Don't type anything on that page and don't click Save.**
+4. Instead, copy the **whole address from the browser's address bar** at the top of that window. It starts with `https://my.home-assistant.io/redirect/oauth?code=`. Paste it into the settings page and choose **Finish** within a few minutes, before the code expires.
 
 No restart is needed: the plugin picks up the login at its next poll.
 

@@ -17,10 +17,21 @@
       dans la fenêtre qui s'ouvre.</span>
     </li>
     <li>
-      You'll land on a Home Assistant or error page. That's expected. Copy the <strong>whole address</strong>
-      from that window's address bar and paste it below.<br>
-      <span lang="fr">Vous arriverez sur une page de Home Assistant ou une page d'erreur : c'est normal. Copiez
-      <strong>l'adresse complète</strong> dans la barre d'adresse de cette fenêtre et collez-la ci-dessous.</span>
+      You'll land on a <strong>My Home Assistant</strong> page that asks for a Home Assistant URL. That's
+      expected, and you don't need Home Assistant. <strong>Don't type anything on that page and don't click
+      Save.</strong><br>
+      <span lang="fr">Vous arriverez sur une page <strong>My Home Assistant</strong> qui demande l'adresse de
+      Home Assistant. C'est normal, et vous n'avez pas besoin de Home Assistant. <strong>N'inscrivez rien sur
+      cette page et ne cliquez pas sur Save.</strong></span>
+    </li>
+    <li>
+      Instead, copy the <strong>whole address from the browser's address bar</strong> at the top of that
+      window. It starts with <code>https://my.home-assistant.io/redirect/oauth?code=</code>. Paste it below
+      and choose <strong>Finish</strong> within a few minutes, before the code expires.<br>
+      <span lang="fr">Copiez plutôt <strong>l'adresse complète qui figure dans la barre d'adresse du
+      navigateur</strong>, en haut de cette fenêtre. Elle commence par
+      <code>https://my.home-assistant.io/redirect/oauth?code=</code>. Collez-la ci-dessous, puis choisissez
+      <strong>Terminer</strong> dans les minutes qui suivent, avant que le code expire.</span>
     </li>
   </ol>
 
@@ -33,7 +44,10 @@
       No login window? <a class="login-link" href="#" target="_blank">Open the Hilo login</a>.<br>
       <span lang="fr">Aucune fenêtre de connexion? <a class="login-link" href="#" target="_blank">Ouvrir la connexion à Hilo</a>.</span>
     </p>
-    <label for="redirect" class="small">Address after logging in / Adresse après la connexion</label>
+    <label for="redirect" class="small">
+      Address from the address bar (starts with https://my.home-assistant.io/redirect/oauth?code=)<br>
+      <span lang="fr">Adresse de la barre d'adresse (commence par https://my.home-assistant.io/redirect/oauth?code=)</span>
+    </label>
     <input type="text" class="form-control mb-2" id="redirect" autocomplete="off" spellcheck="false"
       placeholder="https://my.home-assistant.io/redirect/oauth?code=…">
     <button type="button" class="btn btn-primary" id="finish">Finish / Terminer</button>

@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wait. The window now opens on the click and goes to Hilo once the address is ready.
   If a browser still blocks it, the page shows a link to open the login instead.
 
+### Changed
+- **Clearer login steps** on the settings page and in the README: after signing in you
+  land on a "My Home Assistant" page. Type nothing there and don't click Save; copy the
+  address from the browser's address bar (it starts with
+  `https://my.home-assistant.io/redirect/oauth?code=`) and paste it within a few minutes.
+
 ## [0.2.0] - 2026-10-26
 
 ### Added
