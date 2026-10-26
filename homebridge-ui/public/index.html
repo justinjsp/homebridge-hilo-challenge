@@ -29,6 +29,10 @@
   </div>
 
   <div id="finish-step" style="display: none">
+    <p class="small mb-2">
+      No login window? <a class="login-link" href="#" target="_blank">Open the Hilo login</a>.<br>
+      <span lang="fr">Aucune fenêtre de connexion? <a class="login-link" href="#" target="_blank">Ouvrir la connexion à Hilo</a>.</span>
+    </p>
     <label for="redirect" class="small">Address after logging in / Adresse après la connexion</label>
     <input type="text" class="form-control mb-2" id="redirect" autocomplete="off" spellcheck="false"
       placeholder="https://my.home-assistant.io/redirect/oauth?code=…">
@@ -62,13 +66,22 @@
   });
 
   $('start').addEventListener('click', async () => {
+    // Open the window during the click itself: Safari blocks window.open once the click
+    // has waited on a request, so the window is opened blank and pointed at Hilo after.
+    const loginWindow = window.open('', '_blank');
     try {
       const { url } = await homebridge.request('/login/start');
-      window.open(url, '_blank');
+      if (loginWindow) {
+        loginWindow.location.href = url;
+      }
+      document.querySelectorAll('.login-link').forEach((a) => { a.href = url; });
       $('finish-step').style.display = '';
       $('redirect').value = '';
       $('redirect').focus();
     } catch (e) {
+      if (loginWindow) {
+        loginWindow.close();
+      }
       homebridge.toast.error(e.message);
     }
   });

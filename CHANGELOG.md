@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-26
+
+### Fixed
+- **Log in to Hilo did nothing in Safari.** The settings page waited for the login
+  address before opening the login window, and Safari blocks a window opened after a
+  wait. The window now opens on the click and goes to Hilo once the address is ready.
+  If a browser still blocks it, the page shows a link to open the login instead.
+
 ## [0.2.0] - 2026-10-26
 
 ### Added
@@ -100,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phase detection. Polls only during challenge season (December–March).
 - Plugin icon and disclaimer of no affiliation with Hilo or Hydro-Québec.
 
-[Unreleased]: https://github.com/justinjsp/homebridge-hilo-challenge/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/justinjsp/homebridge-hilo-challenge/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.2.1
 [0.2.0]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.2.0
 [0.1.6]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.6
 [0.1.5]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.5
