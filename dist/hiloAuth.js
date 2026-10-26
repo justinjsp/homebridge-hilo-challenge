@@ -173,6 +173,20 @@ function parseRedirect(pasted, expectedState) {
     catch {
         throw new Error('That is not a web address. Copy the whole address from the browser\'s address bar.');
     }
+    // The My Home Assistant page rewrites its own address once loaded, to
+    // /redirect/_change/?redirect=<the original path and query>, so unwrap that
+    // (a few levels at most) to get back to the address Hilo returned to.
+    for (let depth = 0; depth < 3 && !url.searchParams.has('code') && !url.searchParams.has('error'); depth++) {
+        const inner = url.searchParams.get('redirect');
+        if (!inner)
+            break;
+        try {
+            url = new URL(inner, 'https://my.home-assistant.io/redirect/');
+        }
+        catch {
+            break;
+        }
+    }
     // B2C reports errors in the query (or fragment) as error / error_description
     const params = url.searchParams.has('code') || url.searchParams.has('error')
         ? url.searchParams

@@ -75,6 +75,27 @@ test('parseRedirect takes the code from wherever the browser landed', () => {
   assert.equal(parseRedirect('https://example.com/cb#code=FRAG&state=S1', 'S1'), 'FRAG');
 });
 
+test('parseRedirect unwraps the address the My Home Assistant page rewrites itself to', () => {
+  const inner = 'oauth?code=ABC&state=S1';
+  assert.equal(
+    parseRedirect(`https://my.home-assistant.io/redirect/_change/?redirect=${encodeURIComponent(inner)}`, 'S1'),
+    'ABC',
+  );
+  assert.equal(
+    parseRedirect(`https://my.home-assistant.io/redirect/_change/?redirect=${encodeURIComponent('/redirect/oauth/?code=ABC&state=S1')}`, 'S1'),
+    'ABC',
+  );
+  assert.equal(
+    parseRedirect(`https://my.home-assistant.io/redirect/_change/?redirect=${encodeURIComponent('https://my.home-assistant.io/redirect/oauth?code=ABC&state=S1')}`, 'S1'),
+    'ABC',
+  );
+  assert.throws(
+    () => parseRedirect(`https://my.home-assistant.io/redirect/_change/?redirect=${encodeURIComponent('oauth?code=ABC&state=OTHER')}`, 'S1'),
+    /different login attempt/,
+  );
+  assert.throws(() => parseRedirect('https://my.home-assistant.io/redirect/_change/?redirect=oauth', 'S1'), /no login code/);
+});
+
 test('parseRedirect rejects bad input with a helpful message', () => {
   assert.throws(() => parseRedirect('ABC', 'S1'), /not a web address/);
   assert.throws(() => parseRedirect('https://my.home-assistant.io/redirect/oauth', 'S1'), /no login code/);
