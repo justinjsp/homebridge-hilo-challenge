@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-26
+
 ### Added
 - **Own Hilo login.** The plugin's settings page (custom Homebridge UI) has a
   "Log in to Hilo" button: sign in, then paste the address you land on. This gives the
@@ -98,7 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phase detection. Polls only during challenge season (December–March).
 - Plugin icon and disclaimer of no affiliation with Hilo or Hydro-Québec.
 
-[Unreleased]: https://github.com/justinjsp/homebridge-hilo-challenge/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/justinjsp/homebridge-hilo-challenge/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.2.0
 [0.1.6]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.6
 [0.1.5]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.5
 [0.1.4]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.4
