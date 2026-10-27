@@ -12,7 +12,7 @@ Three sensors are created:
 
 When a sensor opens, it can trigger HomeKit automations — for example, automatically disabling EV chargers during a reduction event.
 
-> **Seasonal operation:** Hilo challenges run from December 1 to March 31. Outside that window the plugin checks the Hilo API once at startup (to confirm the login works) and then makes no API calls; the sensors stay closed.
+> **Seasonal operation:** Hilo challenges run from December 1 to March 31. Outside that window the plugin connects to Hilo once at startup (to confirm the login works), then disconnects and makes no further calls; the sensors stay closed.
 
 ## Logging in to Hilo
 
@@ -78,7 +78,11 @@ If your account has several locations, put the ID or URN of the one you want in 
 
 ## How It Works
 
-The plugin reads Hilo's challenge events API (`/GDService/v1/api/Locations/{id}/Events`), the same source the [Home Assistant Hilo integration](https://github.com/dvd-dev/hilo) uses. Each challenge comes with explicit start and end times for its phases:
+The plugin follows Hilo's **ChallengeHub**, the live connection the Hilo app itself uses for challenges, and the same source as the [Home Assistant Hilo integration](https://github.com/dvd-dev/hilo). (Hilo retired the REST events address that earlier versions read; its newer REST API lists challenges but not their phase times.)
+
+1. At startup it looks up your location with `/Automation/v1/api/Locations`, including your rate (Winter Credits or Flex D).
+2. It connects to the ChallengeHub and subscribes to your location's challenge list, and to the details of each upcoming challenge for your rate.
+3. Hilo pushes new challenges and any changes (new times, cancellations) as they happen. Each challenge comes with explicit start and end times for its phases:
 
 | Phase window from Hilo | Sensor |
 |---|---|
@@ -87,7 +91,7 @@ The plugin reads Hilo's challenge events API (`/GDService/v1/api/Locations/{id}/
 | `recoveryStartDateUTC` – `recoveryEndDateUTC` | Hilo Recovery opens |
 | outside all windows | all sensors closed |
 
-The schedule is fetched at most every 5 minutes; at every poll the current phase is worked out from it, so sensors open and close on time even between fetches or while Hilo is briefly unreachable. Challenges you opted out of in the Hilo app, and completed or cancelled ones, are ignored.
+At every poll the current phase is worked out from the last schedule received, so sensors open and close on time even while the connection is down. If the connection drops, the plugin reconnects on its own (after 30 seconds, then waiting longer each time, up to 10 minutes), and it asks for the challenge list again every 15 minutes in case a message was missed. Challenges you opted out of in the Hilo app, and completed or cancelled ones, are ignored.
 
 ## Automations
 

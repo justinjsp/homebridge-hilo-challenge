@@ -19,7 +19,7 @@ function recorder(): HiloLog & { lines: string[] } {
   };
 }
 
-// The shape documented in python-hilo's get_gd_events
+// A challenge as Hilo's ChallengeHub sends it
 const AM_EVENT = {
   id: 107,
   progress: 'scheduled',
@@ -89,9 +89,9 @@ test('pickLocation uses the first location, or the configured id or URN', () => 
     { id: 4051, locationHiloId: 'urn:hilo:crm:aaa:0', name: 'Home' },
     { id: 9999, locationHiloId: 'urn:hilo:crm:bbb:0', name: 'Cottage' },
   ];
-  assert.deepEqual(pickLocation(list), { id: '4051', hiloId: 'urn:hilo:crm:aaa:0' });
-  assert.deepEqual(pickLocation(list, '9999'), { id: '9999', hiloId: 'urn:hilo:crm:bbb:0' });
-  assert.deepEqual(pickLocation(list, 'urn:hilo:crm:bbb:0'), { id: '9999', hiloId: 'urn:hilo:crm:bbb:0' });
+  assert.deepEqual(pickLocation(list), { id: '4051', hiloId: 'urn:hilo:crm:aaa:0', ratePlan: '' });
+  assert.deepEqual(pickLocation(list, '9999'), { id: '9999', hiloId: 'urn:hilo:crm:bbb:0', ratePlan: '' });
+  assert.deepEqual(pickLocation(list, 'urn:hilo:crm:bbb:0'), { id: '9999', hiloId: 'urn:hilo:crm:bbb:0', ratePlan: '' });
   assert.throws(() => pickLocation(list, 'urn:hilo:crm:zzz:0'), /not on this Hilo account.*4051/);
   assert.throws(() => pickLocation([]), /no locations/);
 });
@@ -106,9 +106,8 @@ interface FakeHilo {
 
 function fakeHilo(opts: {
   accepted: Set<string>;
-  events?: unknown;
-  details?: Record<string, unknown>;
   expiresIn?: number;
+  locationsStatus?: number;
 }): FakeHilo {
   const calls: string[] = [];
   const refreshTokensUsed: string[] = [];
@@ -130,17 +129,13 @@ function fakeHilo(opts: {
     }
     assert.equal(hostname, 'api.hiloenergie.com');
     assert.match(headers.Authorization, /^Bearer AT-\d+$/);
-    if (reqPath === '/Automation/v1/api/Locations') {
-      return { status: 200, data: JSON.stringify([{ id: 4051, locationHiloId: 'urn:hilo:crm:aaa:0' }]) };
+    if (reqPath === '/Automation/v1/api/Locations' && !opts.locationsStatus) {
+      return {
+        status: 200,
+        data: JSON.stringify([{ id: 4051, locationHiloId: 'urn:hilo:crm:aaa:0', ratePlan: { current: 'Flex', history: [] } }]),
+      };
     }
-    if (reqPath === '/GDService/v1/api/Locations/4051/Events?active=true') {
-      return { status: 200, data: JSON.stringify(opts.events ?? []) };
-    }
-    const detail = reqPath.match(/^\/GDService\/v1\/api\/Locations\/4051\/Events\/(\w+)$/);
-    if (detail && opts.details?.[detail[1]]) {
-      return { status: 200, data: JSON.stringify(opts.details[detail[1]]) };
-    }
-    return { status: 404, data: 'Not Found' };
+    return { status: opts.locationsStatus ?? 404, data: 'Not Found' };
   };
   return { request, calls, refreshTokensUsed };
 }
@@ -151,40 +146,19 @@ function loggedIn(token: string): string {
   return file;
 }
 
-test('discovers the location from /Automation/v1/api/Locations', async () => {
+test('discovers the location and its rate from /Automation/v1/api/Locations', async () => {
   const hilo = fakeHilo({ accepted: new Set(['RT-login']) });
   const api = new HiloApi(loggedIn('RT-login'), recorder(), hilo.request);
-  assert.deepEqual(await api.getLocation(), { id: '4051', hiloId: 'urn:hilo:crm:aaa:0' });
+  assert.deepEqual(await api.getLocation(), { id: '4051', hiloId: 'urn:hilo:crm:aaa:0', ratePlan: 'Flex' });
   assert.ok(hilo.calls.includes('GET api.hiloenergie.com/Automation/v1/api/Locations'));
 });
 
-test('reads phases inline from the events list', async () => {
-  const hilo = fakeHilo({ accepted: new Set(['RT-login']), events: [AM_EVENT] });
+test('getAccessToken hands out the current token and refreshes it only when due', async () => {
+  const hilo = fakeHilo({ accepted: new Set(['RT-login']) });
   const api = new HiloApi(loggedIn('RT-login'), recorder(), hilo.request);
-  const events = await api.getChallengeEvents('4051');
-  assert.equal(phaseAt(events, at('2026-12-20T12:00:00Z')), 'reduction');
-  assert.equal(hilo.calls.filter((c) => c.includes('/Events/')).length, 0);
-});
-
-test('fetches event details when the list has no phases', async () => {
-  const hilo = fakeHilo({
-    accepted: new Set(['RT-login']),
-    events: [{ id: 107, progress: 'scheduled' }, { id: 108, progress: 'completed' }, { id: 109, isParticipating: false }],
-    details: { 107: AM_EVENT },
-  });
-  const api = new HiloApi(loggedIn('RT-login'), recorder(), hilo.request);
-  const events = await api.getChallengeEvents('4051');
-  assert.equal(events.length, 1);
-  assert.equal(phaseAt(events, at('2026-12-20T09:30:00Z')), 'preheat');
-  // finished and opted-out events are not looked up
-  assert.deepEqual(hilo.calls.filter((c) => c.includes('/Events/')),
-    ['GET api.hiloenergie.com/GDService/v1/api/Locations/4051/Events/107']);
-});
-
-test('accepts a wrapped events list', async () => {
-  const hilo = fakeHilo({ accepted: new Set(['RT-login']), events: { items: [AM_EVENT] } });
-  const api = new HiloApi(loggedIn('RT-login'), recorder(), hilo.request);
-  assert.equal((await api.getChallengeEvents('4051')).length, 1);
+  assert.equal(await api.getAccessToken(), 'AT-1');
+  assert.equal(await api.getAccessToken(), 'AT-1');
+  assert.deepEqual(hilo.refreshTokensUsed, ['RT-login']);
 });
 
 test('without a login it makes no token request at all', async () => {
@@ -245,11 +219,11 @@ test('a rejected token is not retried until a new login replaces it', async () =
   // user logs in again from the settings page; picked up without a restart
   accepted.add('RT-new-login');
   writeAuthFile(file, newAuthFile('RT-new-login'));
-  assert.deepEqual(await api.getLocation(), { id: '4051', hiloId: 'urn:hilo:crm:aaa:0' });
+  assert.deepEqual(await api.getLocation(), { id: '4051', hiloId: 'urn:hilo:crm:aaa:0', ratePlan: 'Flex' });
 });
 
 test('API errors surface with the status code', async () => {
-  const hilo = fakeHilo({ accepted: new Set(['RT-login']) });
+  const hilo = fakeHilo({ accepted: new Set(['RT-login']), locationsStatus: 503 });
   const api = new HiloApi(loggedIn('RT-login'), recorder(), hilo.request);
-  await assert.rejects(api.getChallengeEvents('9999'), /HTTP 404/);
+  await assert.rejects(api.getLocation(), /HTTP 503/);
 });

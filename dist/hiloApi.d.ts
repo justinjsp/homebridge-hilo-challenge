@@ -14,6 +14,7 @@ export declare class NotLoggedInError extends Error {
 export interface HiloLocation {
     id: string;
     hiloId: string;
+    ratePlan: string;
 }
 export interface PhaseWindow {
     start: number;
@@ -23,8 +24,10 @@ export interface ChallengeEvent {
     id: string;
     phases: Partial<Record<ActivePhase, PhaseWindow>>;
 }
+/** Events the user opted out of, or that are over or cancelled, never open a sensor. */
+export declare function wontRun(event: Record<string, unknown>): boolean;
 /**
- * Turns one event from Hilo's challenge events API into its phase windows. Phase keys
+ * Turns one challenge event from Hilo's ChallengeHub into its phase windows. Phase keys
  * look like "preheatStartDateUTC" / "reductionEndDateUTC" (some API versions use a
  * "…Utc" suffix). Returns null for events that won't run or have no usable phases.
  */
@@ -50,12 +53,8 @@ export declare class HiloApi {
     private refreshAccessToken;
     private apiGet;
     getLocation(configured?: string): Promise<HiloLocation>;
-    /**
-     * The location's upcoming and current challenges, with their phase windows.
-     * The events list may carry the phases inline; when an event doesn't, its detail
-     * record (…/Events/{id}) is fetched for them.
-     */
-    getChallengeEvents(locationId: string): Promise<ChallengeEvent[]>;
+    /** A current access token, refreshed as needed (for the ChallengeHub connection). */
+    getAccessToken(): Promise<string>;
 }
 export declare function errorMessage(err: unknown): string;
 //# sourceMappingURL=hiloApi.d.ts.map

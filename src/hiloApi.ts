@@ -7,7 +7,6 @@ export type { HttpsRequester } from './hiloAuth';
 const API_HOST = 'api.hiloenergie.com';
 const APIM_KEY = '20eeaedcb86945afa3fe792cea89b8bf';
 const LOCATIONS_PATH = '/Automation/v1/api/Locations';
-const eventsPath = (locationId: string) => `/GDService/v1/api/Locations/${encodeURIComponent(locationId)}/Events`;
 
 export type ChallengePhaseName = 'none' | 'preheat' | 'reduction' | 'recovery';
 type ActivePhase = Exclude<ChallengePhaseName, 'none'>;
@@ -24,6 +23,7 @@ export class NotLoggedInError extends Error {}
 export interface HiloLocation {
   id: string;        // numeric location id, used by the REST APIs
   hiloId: string;    // urn:hilo:crm:… (as shown in homebridge-hilo's logs)
+  ratePlan: string;  // current rate: "Flex" (Flex D) or "CH" (Winter Credits); '' if not given
 }
 
 export interface PhaseWindow {
@@ -51,13 +51,13 @@ function parseUtc(value: unknown): number | null {
 }
 
 /** Events the user opted out of, or that are over or cancelled, never open a sensor. */
-function wontRun(event: Record<string, unknown>): boolean {
+export function wontRun(event: Record<string, unknown>): boolean {
   if (event.isParticipating === false) return true;
   return typeof event.progress === 'string' && FINISHED_PROGRESS.includes(event.progress.toLowerCase());
 }
 
 /**
- * Turns one event from Hilo's challenge events API into its phase windows. Phase keys
+ * Turns one challenge event from Hilo's ChallengeHub into its phase windows. Phase keys
  * look like "preheatStartDateUTC" / "reductionEndDateUTC" (some API versions use a
  * "…Utc" suffix). Returns null for events that won't run or have no usable phases.
  */
@@ -104,7 +104,7 @@ function asList(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (data && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
-    for (const key of ['items', 'events', 'value', 'locations']) {
+    for (const key of ['items', 'value', 'locations']) {
       if (Array.isArray(obj[key])) return obj[key] as unknown[];
     }
   }
@@ -119,7 +119,7 @@ export function pickLocation(list: unknown[], configured?: string): HiloLocation
   const locations = list
     .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object')
     .filter((l) => l.id !== undefined && l.id !== null)
-    .map((l) => ({ id: String(l.id), hiloId: typeof l.locationHiloId === 'string' ? l.locationHiloId : '' }));
+    .map((l) => ({ id: String(l.id), hiloId: typeof l.locationHiloId === 'string' ? l.locationHiloId : '', ratePlan: currentRatePlan(l.ratePlan) }));
   if (locations.length === 0) throw new Error('Hilo returned no locations for this account');
 
   const wanted = configured?.trim();
@@ -130,6 +130,16 @@ export function pickLocation(list: unknown[], configured?: string): HiloLocation
     throw new Error(`Location "${wanted}" is not on this Hilo account. Locations found: ${known}`);
   }
   return match;
+}
+
+/** Locations give their rate as { current: "Flex", history: [...] }. */
+function currentRatePlan(ratePlan: unknown): string {
+  if (typeof ratePlan === 'string') return ratePlan;
+  if (ratePlan && typeof ratePlan === 'object') {
+    const current = (ratePlan as Record<string, unknown>).current;
+    if (typeof current === 'string') return current;
+  }
+  return '';
 }
 
 export class HiloApi {
@@ -205,27 +215,11 @@ export class HiloApi {
     return pickLocation(asList(data), configured);
   }
 
-  /**
-   * The location's upcoming and current challenges, with their phase windows.
-   * The events list may carry the phases inline; when an event doesn't, its detail
-   * record (…/Events/{id}) is fetched for them.
-   */
-  async getChallengeEvents(locationId: string): Promise<ChallengeEvent[]> {
-    const list = asList(await this.apiGet(`${eventsPath(locationId)}?active=true`));
-    this.log.debug(`Hilo returned ${list.length} challenge event(s)`);
-
-    const events: ChallengeEvent[] = [];
-    for (const item of list) {
-      if (!item || typeof item !== 'object') continue;
-      const summary = item as Record<string, unknown>;
-      let event = normalizeEvent(summary);
-      if (!event && !summary.phases && summary.id !== undefined && !wontRun(summary)) {
-        const detail = await this.apiGet(`${eventsPath(locationId)}/${encodeURIComponent(String(summary.id))}`);
-        event = normalizeEvent(detail);
-      }
-      if (event) events.push(event);
-    }
-    return events;
+  /** A current access token, refreshed as needed (for the ChallengeHub connection). */
+  async getAccessToken(): Promise<string> {
+    await this.ensureToken();
+    if (!this.accessToken) throw new Error('No Hilo access token');
+    return this.accessToken;
   }
 }
 

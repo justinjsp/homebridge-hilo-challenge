@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HiloApi = exports.NotLoggedInError = exports.LOGIN_EXPIRED = exports.NOT_LOGGED_IN = void 0;
+exports.wontRun = wontRun;
 exports.normalizeEvent = normalizeEvent;
 exports.phaseAt = phaseAt;
 exports.pickLocation = pickLocation;
@@ -9,7 +10,6 @@ const hiloAuth_1 = require("./hiloAuth");
 const API_HOST = 'api.hiloenergie.com';
 const APIM_KEY = '20eeaedcb86945afa3fe792cea89b8bf';
 const LOCATIONS_PATH = '/Automation/v1/api/Locations';
-const eventsPath = (locationId) => `/GDService/v1/api/Locations/${encodeURIComponent(locationId)}/Events`;
 exports.NOT_LOGGED_IN = 'Not logged in to Hilo. Open this plugin\'s settings in the Homebridge UI and choose "Log in to Hilo".';
 exports.LOGIN_EXPIRED = 'The Hilo login has expired or was revoked. Open this plugin\'s settings in the Homebridge UI and log in to Hilo again.';
 class NotLoggedInError extends Error {
@@ -34,7 +34,7 @@ function wontRun(event) {
     return typeof event.progress === 'string' && FINISHED_PROGRESS.includes(event.progress.toLowerCase());
 }
 /**
- * Turns one event from Hilo's challenge events API into its phase windows. Phase keys
+ * Turns one challenge event from Hilo's ChallengeHub into its phase windows. Phase keys
  * look like "preheatStartDateUTC" / "reductionEndDateUTC" (some API versions use a
  * "…Utc" suffix). Returns null for events that won't run or have no usable phases.
  */
@@ -83,7 +83,7 @@ function asList(data) {
         return data;
     if (data && typeof data === 'object') {
         const obj = data;
-        for (const key of ['items', 'events', 'value', 'locations']) {
+        for (const key of ['items', 'value', 'locations']) {
             if (Array.isArray(obj[key]))
                 return obj[key];
         }
@@ -98,7 +98,7 @@ function pickLocation(list, configured) {
     const locations = list
         .filter((l) => !!l && typeof l === 'object')
         .filter((l) => l.id !== undefined && l.id !== null)
-        .map((l) => ({ id: String(l.id), hiloId: typeof l.locationHiloId === 'string' ? l.locationHiloId : '' }));
+        .map((l) => ({ id: String(l.id), hiloId: typeof l.locationHiloId === 'string' ? l.locationHiloId : '', ratePlan: currentRatePlan(l.ratePlan) }));
     if (locations.length === 0)
         throw new Error('Hilo returned no locations for this account');
     const wanted = configured?.trim();
@@ -110,6 +110,17 @@ function pickLocation(list, configured) {
         throw new Error(`Location "${wanted}" is not on this Hilo account. Locations found: ${known}`);
     }
     return match;
+}
+/** Locations give their rate as { current: "Flex", history: [...] }. */
+function currentRatePlan(ratePlan) {
+    if (typeof ratePlan === 'string')
+        return ratePlan;
+    if (ratePlan && typeof ratePlan === 'object') {
+        const current = ratePlan.current;
+        if (typeof current === 'string')
+            return current;
+    }
+    return '';
 }
 class HiloApi {
     constructor(
@@ -184,28 +195,12 @@ class HiloApi {
         const data = await this.apiGet(LOCATIONS_PATH);
         return pickLocation(asList(data), configured);
     }
-    /**
-     * The location's upcoming and current challenges, with their phase windows.
-     * The events list may carry the phases inline; when an event doesn't, its detail
-     * record (…/Events/{id}) is fetched for them.
-     */
-    async getChallengeEvents(locationId) {
-        const list = asList(await this.apiGet(`${eventsPath(locationId)}?active=true`));
-        this.log.debug(`Hilo returned ${list.length} challenge event(s)`);
-        const events = [];
-        for (const item of list) {
-            if (!item || typeof item !== 'object')
-                continue;
-            const summary = item;
-            let event = normalizeEvent(summary);
-            if (!event && !summary.phases && summary.id !== undefined && !wontRun(summary)) {
-                const detail = await this.apiGet(`${eventsPath(locationId)}/${encodeURIComponent(String(summary.id))}`);
-                event = normalizeEvent(detail);
-            }
-            if (event)
-                events.push(event);
-        }
-        return events;
+    /** A current access token, refreshed as needed (for the ChallengeHub connection). */
+    async getAccessToken() {
+        await this.ensureToken();
+        if (!this.accessToken)
+            throw new Error('No Hilo access token');
+        return this.accessToken;
     }
 }
 exports.HiloApi = HiloApi;

@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HiloChallengePlatform = exports.SCHEDULE_REFRESH_MS = exports.PLUGIN_NAME = exports.PLATFORM_NAME = void 0;
+exports.HiloChallengePlatform = exports.PLUGIN_NAME = exports.PLATFORM_NAME = void 0;
 const hiloApi_1 = require("./hiloApi");
 const hiloAuth_1 = require("./hiloAuth");
+const challengeHub_1 = require("./challengeHub");
 const challengeAccessory_1 = require("./challengeAccessory");
 const stateFile_1 = require("./stateFile");
 exports.PLATFORM_NAME = 'HiloChallenge';
@@ -14,9 +15,6 @@ const SENSORS = [
 ];
 // A phase from a state file this recent is carried over at startup (see restorePhase).
 const MIN_RESTORE_AGE_MS = 10 * 60000;
-// How often the challenge schedule is fetched from Hilo. Between fetches the phase is
-// worked out from the cached schedule at every poll, so transitions still land on time.
-exports.SCHEDULE_REFRESH_MS = 5 * 60000;
 class HiloChallengePlatform {
     constructor(log, config, homebridgeApi, 
     // For tests: a fake Hilo and a fixed clock. Homebridge passes neither.
@@ -27,13 +25,15 @@ class HiloChallengePlatform {
         this.deps = deps;
         this.cachedAccessories = [];
         this.sensorAccessories = new Map();
-        this.locationId = null;
+        this.location = null;
         this.timer = null;
-        // The last challenge schedule fetched from Hilo, and when (epoch ms; 0 = never)
-        this.schedule = null;
-        this.scheduleFetchedAt = 0;
-        // Off-season, the schedule is fetched once at startup only, to confirm the login works
+        // Hilo pushes the challenge schedule over its ChallengeHub; between messages the phase
+        // is worked out from the last schedule at every poll, so transitions land on time.
+        this.hub = null;
+        this.loggedSchedule = null;
+        // Off-season, the hub is connected once at startup only, to confirm the login works
         this.checkedOffSeason = false;
+        this.offSeasonPolls = 0;
         // Published to the shared state file for other plugins
         this.tracked = stateFile_1.NO_PHASE;
         this.lastError = null;
@@ -53,6 +53,7 @@ class HiloChallengePlatform {
         this.homebridgeApi.on('shutdown', () => {
             if (this.timer)
                 clearInterval(this.timer);
+            void this.hub?.stop();
         });
     }
     configureAccessory(accessory) {
@@ -98,22 +99,27 @@ class HiloChallengePlatform {
     async poll() {
         const season = this.isChallengeSeason();
         const now = this.now();
-        // Off-season (April–November) no challenges are possible: one schedule fetch at
-        // startup to confirm the login and endpoints work, then no API calls at all.
+        // Off-season (April–November) no challenges are possible: one hub connection at
+        // startup to confirm the login and the hub work, then no connection at all.
         if (season || !this.checkedOffSeason) {
-            this.checkedOffSeason = true;
-            if (this.schedule === null || now.getTime() - this.scheduleFetchedAt >= exports.SCHEDULE_REFRESH_MS) {
-                await this.refreshSchedule(season, now);
+            await this.followHub();
+            // Done once the list or an error has come back, or by the next poll regardless
+            if (!season && (this.hub?.hasSchedule || this.lastError !== null || this.offSeasonPolls++ > 0)) {
+                this.checkedOffSeason = true;
             }
         }
-        // Work the phase out from the schedule. With no schedule yet (every fetch so far
-        // failed), keep the last known phase.
+        if ((!season && this.checkedOffSeason) && this.hub?.isRunning) {
+            await this.hub.stop();
+            this.log.debug('Off-season: disconnected from Hilo\'s ChallengeHub');
+        }
+        // Work the phase out from the schedule. With no schedule yet (no event list has
+        // arrived), keep the last known phase.
         let phase = this.tracked.phase;
         if (!season) {
             phase = 'none';
         }
-        else if (this.schedule !== null) {
-            phase = (0, hiloApi_1.phaseAt)(this.schedule, now);
+        else if (this.hub?.hasSchedule) {
+            phase = (0, hiloApi_1.phaseAt)(this.hub.schedule(), now);
         }
         if (phase !== this.tracked.phase) {
             this.log.info(`Hilo challenge phase: ${phase}`);
@@ -124,25 +130,39 @@ class HiloChallengePlatform {
         this.tracked = (0, stateFile_1.advancePhase)(this.tracked, phase, now);
         this.writeState(season);
     }
-    async refreshSchedule(season, now) {
+    /** Finds the location, then keeps the hub connected and reports its state. */
+    async followHub() {
+        const season = this.isChallengeSeason();
         try {
-            if (!this.locationId) {
+            if (!this.location) {
                 const location = await this.hiloApi.getLocation(this.config['locationId']);
-                this.locationId = location.id;
-                this.log.info(`Using Hilo location ${location.id}${location.hiloId ? ` (${location.hiloId})` : ''}`);
+                this.location = location;
+                this.log.info(`Using Hilo location ${location.id}${location.hiloId ? ` (${location.hiloId})` : ''}` +
+                    `${location.ratePlan ? `, rate ${location.ratePlan}` : ''}`);
             }
-            const events = await this.hiloApi.getChallengeEvents(this.locationId);
-            if (this.schedule === null || events.length !== this.schedule.length) {
-                this.log.info(`Hilo challenge schedule: ${describeSchedule(events)}`);
+            if (!this.hub) {
+                this.hub = new challengeHub_1.ChallengeHub({ hiloId: this.location.hiloId, ratePlan: this.location.ratePlan }, () => this.hiloApi.getAccessToken(), this.log, () => this.now(), this.deps.connector);
             }
-            this.schedule = events;
-            this.scheduleFetchedAt = now.getTime();
-            this.setError(null);
+            if (this.hub.isRunning) {
+                await this.hub.tick();
+            }
+            else {
+                await this.hub.start();
+            }
         }
         catch (err) {
-            // Keep the cached schedule; readers see the error and a fresh updatedAt.
             this.setError((0, hiloApi_1.errorMessage)(err), err instanceof hiloApi_1.NotLoggedInError && !season);
+            return;
         }
+        if (this.hub.hasSchedule) {
+            const schedule = this.hub.schedule();
+            const description = describeSchedule(schedule);
+            if (description !== this.loggedSchedule) {
+                this.log.info(`Hilo challenge schedule: ${description}`);
+                this.loggedSchedule = description;
+            }
+        }
+        this.setError(this.hub.lastError, this.hub.lastErrorIsLogin && !season);
     }
     /** Records the poll error for the state file, logging each new message once. */
     setError(message, quiet = false) {

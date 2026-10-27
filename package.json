@@ -1,6 +1,6 @@
 {
   "name": "homebridge-hilo-challenge",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Homebridge plugin for Hilo (Hydro-Québec) demand response challenges — exposes the preheat, reduction and recovery phases as HomeKit contact sensors",
   "license": "MIT",
   "author": "Justin Prest",
@@ -59,6 +59,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@homebridge/plugin-ui-utils": "^2.2.6"
+    "@homebridge/plugin-ui-utils": "^2.2.6",
+    "@microsoft/signalr": "^10.0.11"
   }
 }

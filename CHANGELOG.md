@@ -7,25 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-10-26
+## [0.3.0] - 2026-10-27
+
+### Changed
+- **Challenges now come from Hilo's ChallengeHub.** Hilo retired the REST address the
+  plugin read challenges from (`/GDService/v1/api/Locations/{id}/Events` now answers
+  404), so 0.2.0 would never have opened a sensor this winter. The plugin now follows
+  the live connection the Hilo app uses (as the Home Assistant Hilo integration does):
+  it subscribes to the location's challenge list and to each upcoming challenge's
+  details for its rate (Winter Credits or Flex D), and Hilo pushes new challenges,
+  time changes and cancellations as they happen. The phase is still worked out from
+  the last schedule at every poll, so sensors keep to the times while the connection
+  is down. It reconnects on its own (30 s, backing off to 10 min), and re-asks for the
+  list every 15 min. Off-season it connects once at startup, then disconnects.
+- New dependency: `@microsoft/signalr`, Microsoft's SignalR client.
+- The startup log names the location's rate.
+- **Clearer login steps** on the settings page and in the README: after signing in you
+  land on a "My Home Assistant" page. Type nothing there and don't click Save; copy the
+  address from the browser's address bar (it starts with
+  `https://my.home-assistant.io/redirect/`) and paste it within a few minutes.
 
 ### Fixed
 - **Log in to Hilo did nothing in Safari.** The settings page waited for the login
   address before opening the login window, and Safari blocks a window opened after a
   wait. The window now opens on the click and goes to Hilo once the address is ready.
   If a browser still blocks it, the page shows a link to open the login instead.
-
 - **Finish said "no login code" for a correct paste.** Once loaded, the My Home
   Assistant page rewrites its own address to `/redirect/_change/?redirect=…`, with the
   original address (and its login code) inside. The plugin now unwraps it.
 - **Login errors were easy to miss.** They now show on the settings page under Finish,
   and the Homebridge log records why a login failed (never the login code).
-
-### Changed
-- **Clearer login steps** on the settings page and in the README: after signing in you
-  land on a "My Home Assistant" page. Type nothing there and don't click Save; copy the
-  address from the browser's address bar (it starts with
-  `https://my.home-assistant.io/redirect/`) and paste it within a few minutes.
 
 ## [0.2.0] - 2026-10-26
 
@@ -120,8 +131,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phase detection. Polls only during challenge season (December–March).
 - Plugin icon and disclaimer of no affiliation with Hilo or Hydro-Québec.
 
-[Unreleased]: https://github.com/justinjsp/homebridge-hilo-challenge/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.2.1
+[Unreleased]: https://github.com/justinjsp/homebridge-hilo-challenge/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.3.0
 [0.2.0]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.2.0
 [0.1.6]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.6
 [0.1.5]: https://github.com/justinjsp/homebridge-hilo-challenge/releases/tag/v0.1.5
